@@ -1,0 +1,42 @@
+[package]
+name = "veloxquant"
+description = "VeloxQuant for Rust — memory intelligence and optimization for local AI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[dependencies]
+veloxquant-core = { workspace = true }
+veloxquant-system = { workspace = true }
+veloxquant-memory = { workspace = true }
+veloxquant-runtime = { workspace = true, optional = true }
+veloxquant-openai = { workspace = true, optional = true }
+veloxquant-monitor = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
+axum = "0.7"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[example]]
+name = "chat"
+required-features = ["openai"]
+
+[[example]]
+name = "axum_server"
+
+[features]
+default = ["runtime", "openai"]
+runtime = ["dep:veloxquant-runtime"]
+openai = ["dep:veloxquant-openai", "dep:reqwest", "runtime"]
+monitor = ["dep:veloxquant-monitor"]
+native-optimizers = []

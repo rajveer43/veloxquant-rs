@@ -1,0 +1,22 @@
+[package]
+name = "veloxquant-cli"
+description = "vq — the VeloxQuant command-line interface"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "vq"
+path = "src/main.rs"
+
+[dependencies]
+veloxquant = { path = "../veloxquant", version = "0.1.0" }
+tokio = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }

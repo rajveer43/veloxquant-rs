@@ -1,0 +1,19 @@
+[package]
+name = "veloxquant-openai"
+description = "OpenAI-compatible chat types for the VeloxQuant Rust SDK (chat completions land in v0.2.0)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+veloxquant-core = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
