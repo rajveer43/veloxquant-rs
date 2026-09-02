@@ -2,6 +2,17 @@
 
 Memory intelligence and optimization for local AI.
 
+| Crate | crates.io | docs.rs |
+|-------|-----------|---------|
+| [`veloxquant`](crates/veloxquant) | [![crates.io](https://img.shields.io/crates/v/veloxquant.svg)](https://crates.io/crates/veloxquant) | [![docs.rs](https://img.shields.io/docsrs/veloxquant)](https://docs.rs/veloxquant) |
+| [`veloxquant-core`](crates/veloxquant-core) | [![crates.io](https://img.shields.io/crates/v/veloxquant-core.svg)](https://crates.io/crates/veloxquant-core) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-core)](https://docs.rs/veloxquant-core) |
+| [`veloxquant-system`](crates/veloxquant-system) | [![crates.io](https://img.shields.io/crates/v/veloxquant-system.svg)](https://crates.io/crates/veloxquant-system) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-system)](https://docs.rs/veloxquant-system) |
+| [`veloxquant-memory`](crates/veloxquant-memory) | [![crates.io](https://img.shields.io/crates/v/veloxquant-memory.svg)](https://crates.io/crates/veloxquant-memory) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-memory)](https://docs.rs/veloxquant-memory) |
+| [`veloxquant-runtime`](crates/veloxquant-runtime) | [![crates.io](https://img.shields.io/crates/v/veloxquant-runtime.svg)](https://crates.io/crates/veloxquant-runtime) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-runtime)](https://docs.rs/veloxquant-runtime) |
+| [`veloxquant-openai`](crates/veloxquant-openai) | [![crates.io](https://img.shields.io/crates/v/veloxquant-openai.svg)](https://crates.io/crates/veloxquant-openai) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-openai)](https://docs.rs/veloxquant-openai) |
+| [`veloxquant-monitor`](crates/veloxquant-monitor) | [![crates.io](https://img.shields.io/crates/v/veloxquant-monitor.svg)](https://crates.io/crates/veloxquant-monitor) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-monitor)](https://docs.rs/veloxquant-monitor) |
+| [`veloxquant-cli`](crates/veloxquant-cli) (`vq`) | not published — see [prebuilt binaries](https://github.com/rajveer43/veloxquant-rs/releases) | — |
+
 `veloxquant` helps Rust developers detect Apple Silicon hardware, estimate
 LLM and KV-cache memory requirements, get VeloxQuant compression
 recommendations, and talk to a local VeloxQuant (or other OpenAI-compatible)
@@ -12,11 +23,12 @@ ecosystem, alongside VeloxQuant-MLX (Python), VeloxQuant Studio (macOS),
 VeloxQuant VS Code, and SDKs for [Go](https://github.com/rajveer43/veloxquant-go)
 and [TypeScript](https://github.com/rajveer43/veloxquant-sdk).
 
-> **Status:** v0.1.0. Hardware detection, memory/KV-cache estimation,
-> optimization recommendations, the model registry, and non-streamed chat
-> are implemented and tested. Streaming, AutoPilot, live monitoring, and
-> native compression are tracked as [open issues](https://github.com/rajveer43/veloxquant-rs/issues) —
-> see [Roadmap](#roadmap).
+> **Status:** v0.2.0. Hardware detection, memory/KV-cache estimation,
+> optimization recommendations, the model registry, and chat (both
+> non-streamed and SSE-streamed) are implemented and tested. AutoPilot,
+> live monitoring, and native compression are tracked as
+> [open issues](https://github.com/rajveer43/veloxquant-rs/issues) — see
+> [Roadmap](#roadmap).
 
 ## Installation
 
@@ -145,9 +157,28 @@ manually to get the same information AutoPilot will automate.
 
 ## Streaming
 
-Not yet implemented — see [Roadmap](#roadmap) (targeted for v0.2.0).
-`client.chat()?.create(...)` returns a complete (non-streamed) response
-today.
+```rust,no_run
+use futures_util::StreamExt;
+use veloxquant::{Client, Message};
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let client = Client::builder().build()?;
+let mut stream = client
+    .chat()?
+    .stream("Qwen3-8B", vec![Message::user("Hello!")])
+    .await?;
+
+while let Some(chunk) = stream.next().await {
+    let chunk = chunk?;
+    print!("{}", chunk.text);
+}
+# Ok(())
+# }
+```
+
+Parses SSE incrementally (no full-response buffering) and cancels the
+underlying connection if the stream is dropped before completion. See
+`examples/streaming.rs`.
 
 ## OpenAI Compatibility
 
@@ -161,8 +192,9 @@ let client = veloxquant::Client::builder()
 ```
 
 `Client::chat` posts to `{base_url}/v1/chat/completions` in the standard
-OpenAI request/response shape. `GET /v1/models` and streaming are planned
-for v0.2.0.
+OpenAI request/response shape, both non-streamed (`create`) and
+SSE-streamed (`stream`). `GET /v1/models` is planned — see
+[Roadmap](#roadmap).
 
 ## Monitoring
 
@@ -231,7 +263,7 @@ Feature flags on the `veloxquant` crate let you opt out of what you don't need:
 
 ```toml
 [dependencies]
-veloxquant = { version = "0.1", default-features = false, features = ["runtime"] }
+veloxquant = { version = "0.2", default-features = false, features = ["runtime"] }
 ```
 
 | Feature             | Default | Enables                                   |
@@ -243,10 +275,12 @@ veloxquant = { version = "0.1", default-features = false, features = ["runtime"]
 
 ## Roadmap
 
-- **v0.1.0** (this release) — workspace, hardware detection, memory/KV-cache
+- **v0.1.0** — workspace, hardware detection, memory/KV-cache
   estimation, optimization profiles, runtime health check, non-streamed
   chat, curated model registry, `vq doctor`/`analyze`/`recommend`/`benchmark`/`serve`, tests.
-- **v0.2.0** — SSE streaming chat, `GET /v1/models`, richer model registry.
+- **v0.2.0** (this release) — SSE streaming chat completions. `GET /v1/models`
+  is also scoped to v0.2.0 and still open — see
+  [issue #2](https://github.com/rajveer43/veloxquant-rs/issues/2).
 - **v0.3.0** — Live monitoring/sampling, benchmarking polish, AutoPilot, advanced model recommendation.
 - **v0.5.0** — Investigate native Rust KV-cache compression (TurboQuant, RVQ, VecInfer, RateQuant, PolarQuant, QJL).
 - **v1.0.0** — Stable API, SemVer guarantees, full CI/release automation.
