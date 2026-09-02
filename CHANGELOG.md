@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-02
+
+### Added
+
+- True async SSE streaming for chat completions: `Client::chat().stream(...)`
+  returns a `Stream<Item = Result<ChatChunk, VeloxQuantError>>`
+  (`veloxquant_openai::stream_chat_completions`, `streaming::ChatStream`).
+  Parses SSE incrementally (no full-response buffering), handles the
+  `[DONE]` terminator, and cancels the underlying connection when the
+  stream is dropped.
+- `examples/streaming.rs`: a working streaming chat example.
+- CI now runs against the `master` branch (previously configured for a
+  `main` branch that doesn't exist in this repo) and a `scripts/bump-version.sh`
+  helper plus a `Bump version` GitHub Actions workflow automate workspace
+  version bumps.
+
 ## [0.1.0] - 2026-09-02
 
 Initial release. See the [roadmap](https://github.com/rajveer43/veloxquant-rs/issues) for what's next.

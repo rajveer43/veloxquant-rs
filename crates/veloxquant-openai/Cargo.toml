@@ -1,6 +1,6 @@
 [package]
 name = "veloxquant-openai"
-description = "OpenAI-compatible chat types for the VeloxQuant Rust SDK (chat completions land in v0.2.0)"
+description = "OpenAI-compatible chat completions (including SSE streaming) for the VeloxQuant Rust SDK"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,6 +14,10 @@ categories.workspace = true
 [dependencies]
 veloxquant-core = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+futures-util = { workspace = true }
+async-stream = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }

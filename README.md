@@ -7,7 +7,7 @@ LLM and KV-cache memory requirements, get VeloxQuant compression
 recommendations, and talk to a local VeloxQuant (or other OpenAI-compatible)
 inference runtime — all with an async-first, idiomatic Rust API.
 
-This crate is part of the [VeloxQuant](https://github.com/veloxquant)
+This crate is part of the [VeloxQuant](https://github.com/rajveer43/VeloxQuant-MLX)
 ecosystem, alongside VeloxQuant-MLX (Python), VeloxQuant Studio (macOS),
 VeloxQuant VS Code, and SDKs for [Go](https://github.com/rajveer43/veloxquant-go)
 and [TypeScript](https://github.com/rajveer43/veloxquant-sdk).
@@ -22,7 +22,7 @@ and [TypeScript](https://github.com/rajveer43/veloxquant-sdk).
 
 ```toml
 [dependencies]
-veloxquant = "0.1"
+veloxquant = "0.2"
 ```
 
 MSRV: Rust 1.75 (edition 2021).

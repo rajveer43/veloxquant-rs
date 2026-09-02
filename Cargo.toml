@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.75"
 license = "MIT OR Apache-2.0"
@@ -23,12 +23,12 @@ keywords = ["llm", "apple-silicon", "memory", "inference", "mlx"]
 categories = ["development-tools", "hardware-support"]
 
 [workspace.dependencies]
-veloxquant-core = { path = "crates/veloxquant-core", version = "0.1.0" }
-veloxquant-system = { path = "crates/veloxquant-system", version = "0.1.0" }
-veloxquant-memory = { path = "crates/veloxquant-memory", version = "0.1.0" }
-veloxquant-runtime = { path = "crates/veloxquant-runtime", version = "0.1.0" }
-veloxquant-openai = { path = "crates/veloxquant-openai", version = "0.1.0" }
-veloxquant-monitor = { path = "crates/veloxquant-monitor", version = "0.1.0" }
+veloxquant-core = { path = "crates/veloxquant-core", version = "0.2.0" }
+veloxquant-system = { path = "crates/veloxquant-system", version = "0.2.0" }
+veloxquant-memory = { path = "crates/veloxquant-memory", version = "0.2.0" }
+veloxquant-runtime = { path = "crates/veloxquant-runtime", version = "0.2.0" }
+veloxquant-openai = { path = "crates/veloxquant-openai", version = "0.2.0" }
+veloxquant-monitor = { path = "crates/veloxquant-monitor", version = "0.2.0" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }

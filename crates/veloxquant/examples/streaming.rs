@@ -1,12 +1,35 @@
-//! Streaming chat responses are planned for v0.2.0 and are not implemented
-//! in this release.
+//! Streaming chat example.
 //!
-//! Track progress at
-//! <https://github.com/rajveer43/veloxquant-rs/issues> (see the v0.2.0
-//! milestone). In the meantime, see `examples/chat.rs` for a non-streamed
-//! chat completion.
+//! Requires a VeloxQuant (or other OpenAI-compatible) runtime at
+//! `http://localhost:8765`. Run with:
+//!
+//! ```sh
+//! cargo run --example streaming --features openai
+//! ```
 
-fn main() {
-    eprintln!("streaming chat is not yet implemented; see examples/chat.rs for non-streamed chat");
-    std::process::exit(1);
+use futures_util::StreamExt;
+use veloxquant::{Client, Message};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::builder().auto_detect().build()?;
+
+    let mut stream = client
+        .chat()?
+        .stream(
+            "mlx-community/Qwen3-8B-4bit",
+            vec![Message::user("Explain KV cache in simple terms.")],
+        )
+        .await?;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        print!("{}", chunk.text);
+        if chunk.done {
+            break;
+        }
+    }
+    println!();
+
+    Ok(())
 }

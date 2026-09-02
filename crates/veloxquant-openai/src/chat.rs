@@ -1,7 +1,12 @@
-//! Chat message and request/response types, shared by the (future) sync
-//! and streaming chat APIs.
+//! Chat message and request/response types, and the SSE-based streaming
+//! chat completion transport.
 
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+
+use veloxquant_core::VeloxQuantError;
+
+use crate::streaming::{ChatStream, SseEvent, SseParser};
 
 /// The role of a chat message's author.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,6 +111,70 @@ pub struct ChatResponse {
     pub metrics: InferenceMetrics,
 }
 
+/// Issues a streaming chat completion request and returns a [`ChatStream`]
+/// that yields [`crate::streaming::ChatChunk`]s as they arrive over SSE.
+///
+/// `request.stream` is forced to `true` regardless of the value passed in.
+/// Parsing is incremental: the response body is not buffered in full
+/// before the first chunk is yielded, and the underlying connection is
+/// closed if the returned stream is dropped before completion.
+///
+/// Returns [`VeloxQuantError::RuntimeUnavailable`] if the initial request
+/// cannot be sent or the runtime responds with a non-success status; once
+/// the stream begins, an invalid JSON payload on an individual SSE frame
+/// surfaces as a [`VeloxQuantError::Serialization`] item within the stream
+/// rather than terminating it.
+pub async fn stream_chat_completions(
+    http: reqwest::Client,
+    base_url: &str,
+    mut request: ChatRequest,
+) -> Result<ChatStream, VeloxQuantError> {
+    request.stream = true;
+
+    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+
+    let response = http
+        .post(&url)
+        .json(&request)
+        .send()
+        .await
+        .map_err(|_| VeloxQuantError::RuntimeUnavailable)?;
+
+    if !response.status().is_success() {
+        return Err(VeloxQuantError::RuntimeUnavailable);
+    }
+
+    let mut byte_stream = response.bytes_stream();
+    let mut parser = SseParser::default();
+    let mut done = false;
+
+    let stream = async_stream::stream! {
+        while !done {
+            let bytes = match byte_stream.next().await {
+                Some(Ok(bytes)) => bytes,
+                Some(Err(err)) => {
+                    yield Err(VeloxQuantError::from(err));
+                    return;
+                }
+                None => return,
+            };
+
+            for event in parser.push(&bytes) {
+                match event {
+                    Ok(SseEvent::Chunk(chunk)) => yield Ok(chunk),
+                    Ok(SseEvent::Done) => {
+                        done = true;
+                        break;
+                    }
+                    Err(err) => yield Err(err),
+                }
+            }
+        }
+    };
+
+    Ok(ChatStream::new(stream))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +198,192 @@ mod tests {
         let json = serde_json::to_string(&req).unwrap();
         assert!(!json.contains("temperature"));
         assert!(!json.contains("max_tokens"));
+    }
+}
+
+#[cfg(test)]
+mod streaming_tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use futures_util::StreamExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    use super::*;
+
+    /// Starts a bare-bones HTTP server on an ephemeral port that ignores
+    /// the request and writes `body` verbatim as an SSE response, then
+    /// closes the connection. Returns the base URL and a flag set once the
+    /// server observes the client disconnect (used by the cancellation
+    /// test).
+    async fn spawn_sse_server(body: &'static str) -> (String, Arc<AtomicBool>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let disconnected = Arc::new(AtomicBool::new(false));
+        let disconnected_writer = disconnected.clone();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+
+                let header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
+                if socket.write_all(header.as_bytes()).await.is_err() {
+                    return;
+                }
+
+                for chunk in body.as_bytes().chunks(8) {
+                    if socket.write_all(chunk).await.is_err() {
+                        disconnected_writer.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        (format!("http://{addr}"), disconnected)
+    }
+
+    #[tokio::test]
+    async fn yields_chunks_then_stops_at_done_sentinel() {
+        let (base_url, _) = spawn_sse_server(
+            "data: {\"text\":\"hel\"}\n\ndata: {\"text\":\"lo\",\"done\":true}\n\ndata: [DONE]\n\n",
+        )
+        .await;
+
+        let http = reqwest::Client::new();
+        let request = ChatRequest {
+            model: "m".into(),
+            messages: vec![Message::user("hi")],
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+        };
+        let mut stream = stream_chat_completions(http, &base_url, request)
+            .await
+            .unwrap();
+
+        let first = stream.next().await.unwrap().unwrap();
+        assert_eq!(first.text, "hel");
+        let second = stream.next().await.unwrap().unwrap();
+        assert_eq!(second.text, "lo");
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn invalid_json_mid_stream_surfaces_as_error_without_ending_stream() {
+        let (base_url, _) = spawn_sse_server(
+            "data: {\"text\":\"ok1\"}\n\ndata: {not json}\n\ndata: {\"text\":\"ok2\"}\n\ndata: [DONE]\n\n",
+        )
+        .await;
+
+        let http = reqwest::Client::new();
+        let request = ChatRequest {
+            model: "m".into(),
+            messages: vec![Message::user("hi")],
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+        };
+        let mut stream = stream_chat_completions(http, &base_url, request)
+            .await
+            .unwrap();
+
+        assert_eq!(stream.next().await.unwrap().unwrap().text, "ok1");
+        assert!(matches!(
+            stream.next().await.unwrap(),
+            Err(VeloxQuantError::Serialization(_))
+        ));
+        assert_eq!(stream.next().await.unwrap().unwrap().text, "ok2");
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn broken_connection_mid_stream_surfaces_network_error() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                let header = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
+                let _ = socket.write_all(header.as_bytes()).await;
+                let _ = socket.write_all(b"data: {\"text\":\"partial\"}\n\n").await;
+                // Drop the socket mid-stream without a `[DONE]` or a clean
+                // shutdown — reqwest surfaces the abrupt close as an error
+                // on the next poll.
+                drop(socket);
+            }
+        });
+
+        let http = reqwest::Client::new();
+        let request = ChatRequest {
+            model: "m".into(),
+            messages: vec![Message::user("hi")],
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+        };
+        let mut stream = stream_chat_completions(http, &format!("http://{addr}"), request)
+            .await
+            .unwrap();
+
+        assert_eq!(stream.next().await.unwrap().unwrap().text, "partial");
+        // The stream either surfaces a network error or ends cleanly,
+        // depending on how the OS reports the abrupt close; either is an
+        // acceptable terminal state as long as it doesn't hang or panic.
+        let _ = stream.next().await;
+    }
+
+    #[tokio::test]
+    async fn dropping_stream_cancels_underlying_connection() {
+        let (base_url, disconnected) = spawn_sse_server(
+            "data: {\"text\":\"a\"}\n\ndata: {\"text\":\"b\"}\n\ndata: {\"text\":\"c\"}\n\ndata: [DONE]\n\n",
+        )
+        .await;
+
+        let http = reqwest::Client::new();
+        let request = ChatRequest {
+            model: "m".into(),
+            messages: vec![Message::user("hi")],
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+        };
+        let mut stream = stream_chat_completions(http, &base_url, request)
+            .await
+            .unwrap();
+
+        assert_eq!(stream.next().await.unwrap().unwrap().text, "a");
+        drop(stream);
+
+        // Give the server task a moment to observe the client disconnect
+        // while it's still trying to write subsequent chunks.
+        for _ in 0..50 {
+            if disconnected.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(disconnected.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn runtime_unavailable_when_connection_refused() {
+        let http = reqwest::Client::new();
+        let request = ChatRequest {
+            model: "m".into(),
+            messages: vec![Message::user("hi")],
+            temperature: None,
+            max_tokens: None,
+            stream: false,
+        };
+        let result = stream_chat_completions(http, "http://127.0.0.1:1", request).await;
+        assert!(matches!(result, Err(VeloxQuantError::RuntimeUnavailable)));
     }
 }

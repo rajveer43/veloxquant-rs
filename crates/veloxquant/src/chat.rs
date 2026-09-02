@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use veloxquant_core::{Result, VeloxQuantError};
-use veloxquant_openai::{ChatRequest, ChatResponse, Message};
+use veloxquant_openai::{ChatRequest, ChatResponse, ChatStream, Message};
 
 /// Handle for issuing chat completions against the configured runtime.
 ///
@@ -60,5 +60,45 @@ impl ChatApi {
 
         let chat_response = response.json::<ChatResponse>().await?;
         Ok(chat_response)
+    }
+
+    /// Sends a chat completion request and streams the response
+    /// incrementally over Server-Sent Events.
+    ///
+    /// Posts to `{base_url}/v1/chat/completions` with `stream: true`. The
+    /// returned [`ChatStream`] yields chunks as they arrive; dropping it
+    /// before it's exhausted cancels the underlying connection.
+    ///
+    /// ```no_run
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// use futures_util::StreamExt;
+    /// use veloxquant::{Client, Message};
+    ///
+    /// let client = Client::builder().build()?;
+    /// let mut stream = client
+    ///     .chat()?
+    ///     .stream("Qwen3-8B", vec![Message::user("hi")])
+    ///     .await?;
+    /// while let Some(chunk) = stream.next().await {
+    ///     let chunk = chunk?;
+    ///     print!("{}", chunk.text);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn stream(
+        &self,
+        model: impl Into<String>,
+        messages: Vec<Message>,
+    ) -> Result<ChatStream> {
+        let request = ChatRequest {
+            model: model.into(),
+            messages,
+            temperature: None,
+            max_tokens: None,
+            stream: true,
+        };
+
+        veloxquant_openai::stream_chat_completions(self.http.clone(), &self.base_url, request).await
     }
 }
