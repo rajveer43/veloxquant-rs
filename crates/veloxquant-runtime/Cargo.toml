@@ -13,10 +13,11 @@ categories.workspace = true
 
 [dependencies]
 veloxquant-core = { workspace = true }
+veloxquant-openai = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net", "io-util"] }

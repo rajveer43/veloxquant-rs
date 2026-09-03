@@ -89,6 +89,17 @@ impl Client {
         )
     }
 
+    /// Lists models available on the configured runtime, merged with the
+    /// curated static registry (see [`ModelRegistry::merge_remote`]).
+    ///
+    /// Returns [`veloxquant_core::VeloxQuantError::RuntimeUnavailable`] if
+    /// the runtime cannot be reached.
+    #[cfg(feature = "openai")]
+    pub async fn list_models(&self) -> Result<Vec<crate::models::ModelInfo>> {
+        let remote = self.inner.runtime.list_models().await?;
+        Ok(self.inner.models.merge_remote(remote))
+    }
+
     /// The optimization profile this client will use by default.
     pub fn profile(&self) -> OptimizationProfile {
         self.inner.config.profile

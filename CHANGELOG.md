@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- OpenAI-compatible model listing: `RuntimeClient::list_models` calls
+  `GET {base_url}/v1/models` and deserializes the standard `{"data": [...]}`
+  envelope into `Vec<RemoteModel>`. `ModelRegistry::merge_remote` merges a
+  live listing with the curated static registry — matching curated entries
+  are kept as-is (richer `ModelArchitecture`/tasks win), unmatched remote
+  models are appended as minimal, unsupported entries. `Client::list_models`
+  wires the two together as a single async call.
+
 ## [0.2.0] - 2026-09-02
 
 ### Added

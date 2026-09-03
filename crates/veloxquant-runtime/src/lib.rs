@@ -1,7 +1,8 @@
 //! Async client for communicating with a local VeloxQuant runtime.
 //!
-//! Implements the health-check endpoint used by `vq doctor` and
-//! [`RuntimeClient::health`]. Chat completions (streaming and
+//! Implements the health-check endpoint used by `vq doctor`
+//! ([`RuntimeClient::health`]) and model listing
+//! ([`RuntimeClient::list_models`]). Chat completions (streaming and
 //! non-streaming) live in `veloxquant-openai`; [`streaming::ChatChunk`] is
 //! kept here as a stable shared chunk shape.
 

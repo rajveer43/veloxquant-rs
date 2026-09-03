@@ -40,7 +40,7 @@ pub use veloxquant_system::SystemInfo;
 #[cfg(feature = "openai")]
 pub use chat::ChatApi;
 #[cfg(feature = "openai")]
-pub use veloxquant_openai::{ChatResponse, Message, Role};
+pub use veloxquant_openai::{ChatResponse, Message, RemoteModel, Role};
 
 #[cfg(feature = "runtime")]
 pub use veloxquant_runtime::RuntimeStatus;

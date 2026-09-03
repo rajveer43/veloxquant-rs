@@ -1433,6 +1433,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "veloxquant-core",
+ "veloxquant-openai",
 ]
 
 [[package]]

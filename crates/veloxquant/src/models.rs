@@ -7,6 +7,8 @@
 //! access is required for basic functionality.
 
 use veloxquant_memory::ModelArchitecture;
+#[cfg(feature = "openai")]
+use veloxquant_openai::RemoteModel;
 
 /// A task an LLM might be used for, used to filter model recommendations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +116,43 @@ impl ModelRegistry {
         registry()
     }
 
+    /// Merges live models reported by a runtime's `GET /v1/models` with the
+    /// curated registry.
+    ///
+    /// Curated entries take precedence: when a remote model's `id` matches
+    /// a curated entry's `name`, the curated entry (with its richer
+    /// [`ModelArchitecture`], task list, etc.) is kept as-is. Remote models
+    /// with no curated match are appended as minimal, unsupported entries —
+    /// their `architecture` fields are zeroed since nothing is known about
+    /// them beyond the id, so they should not be used for memory
+    /// estimation.
+    #[cfg(feature = "openai")]
+    pub fn merge_remote(&self, remote: Vec<RemoteModel>) -> Vec<ModelInfo> {
+        let mut models = registry();
+
+        for remote_model in remote {
+            if models.iter().any(|m| m.name == remote_model.id) {
+                continue;
+            }
+            models.push(ModelInfo {
+                name: remote_model.id,
+                architecture: ModelArchitecture {
+                    name: String::new(),
+                    num_layers: 0,
+                    num_kv_heads: 0,
+                    head_dim: 0,
+                    hidden_size: 0,
+                    parameter_count: 0,
+                },
+                supported: true,
+                recommended: false,
+                tasks: Vec::new(),
+            });
+        }
+
+        models
+    }
+
     /// Recommends models matching a task and/or available memory, using a
     /// conservative FP16-weights-only check against `available_memory_bytes`
     /// (KV cache is excluded since context length isn't known here).
@@ -164,5 +203,57 @@ mod tests {
             available_memory_bytes: 1024, // 1 KB — nothing should fit
         });
         assert!(tiny_budget.is_empty());
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn merge_remote_keeps_curated_entry_on_name_match() {
+        let registry = ModelRegistry::new();
+        let merged = registry.merge_remote(vec![RemoteModel {
+            id: "mlx-community/Qwen3-8B-4bit".to_string(),
+            object: "model".to_string(),
+        }]);
+
+        // No duplicate: the curated entry is reused rather than appended.
+        assert_eq!(
+            merged
+                .iter()
+                .filter(|m| m.name == "mlx-community/Qwen3-8B-4bit")
+                .count(),
+            1
+        );
+        let matched = merged
+            .iter()
+            .find(|m| m.name == "mlx-community/Qwen3-8B-4bit")
+            .unwrap();
+        assert_eq!(matched.architecture.num_layers, 36); // curated data preserved
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn merge_remote_appends_unmatched_models_as_minimal_entries() {
+        let registry = ModelRegistry::new();
+        let curated_count = registry.list().len();
+        let merged = registry.merge_remote(vec![RemoteModel {
+            id: "some-custom-local-model".to_string(),
+            object: "model".to_string(),
+        }]);
+
+        assert_eq!(merged.len(), curated_count + 1);
+        let extra = merged
+            .iter()
+            .find(|m| m.name == "some-custom-local-model")
+            .unwrap();
+        assert!(extra.supported);
+        assert!(!extra.recommended);
+        assert_eq!(extra.architecture.num_layers, 0);
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn merge_remote_with_empty_list_returns_curated_only() {
+        let registry = ModelRegistry::new();
+        let merged = registry.merge_remote(vec![]);
+        assert_eq!(merged.len(), registry.list().len());
     }
 }
