@@ -1359,7 +1359,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "veloxquant"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "axum",
  "futures-util",
@@ -1377,7 +1377,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1387,7 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "reqwest",
  "serde",
@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-memory"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "veloxquant-core",
@@ -1405,7 +1405,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-monitor"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "tokio",
  "veloxquant-core",
@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-openai"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-stream",
  "futures-util",
@@ -1426,7 +1426,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-runtime"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "reqwest",
  "serde",
@@ -1438,7 +1438,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-system"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "sysinfo",
