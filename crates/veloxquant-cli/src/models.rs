@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
-use veloxquant::{delete_local_model, format_bytes, list_local_models, pull_local_model};
 use veloxquant::PythonInterpreter;
+use veloxquant::{delete_local_model, format_bytes, list_local_models, pull_local_model};
 
 pub async fn list() -> Result<()> {
     let interpreter = PythonInterpreter::default();

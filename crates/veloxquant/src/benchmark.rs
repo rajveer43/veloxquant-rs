@@ -235,7 +235,9 @@ pub async fn benchmark_pass(client: &Client, input: BenchmarkInput) -> Result<Be
 
     Ok(BenchmarkPass {
         model: input.model,
-        method: input.optimized_method.unwrap_or_else(|| "default".to_string()),
+        method: input
+            .optimized_method
+            .unwrap_or_else(|| "default".to_string()),
         timing,
         resident_bytes,
     })
@@ -319,7 +321,10 @@ impl BenchmarkResult {
             let after_mb = after_bytes as f64 / 1024f64.powi(2);
             let delta_percent = ((before_mb - after_mb) / before_mb) * 100.0;
 
-            lines.push(format!("{} resident memory: {:.0}MB", self.method, before_mb));
+            lines.push(format!(
+                "{} resident memory: {:.0}MB",
+                self.method, before_mb
+            ));
             lines.push(format!(
                 "{} resident memory: {:.0}MB",
                 self.optimized_method_used, after_mb

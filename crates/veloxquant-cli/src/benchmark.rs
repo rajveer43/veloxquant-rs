@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Result};
-use veloxquant::{benchmark_pass, format_bytes, BenchmarkInput, Client, MemoryRequest, ModelArchitecture, Precision};
+use veloxquant::{
+    benchmark_pass, format_bytes, BenchmarkInput, Client, MemoryRequest, ModelArchitecture,
+    Precision,
+};
 
 /// `vq benchmark <model>` — benchmarks tokens/sec and time-to-first-token
 /// for `model` against a running VeloxQuant runtime, via the reusable

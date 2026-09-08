@@ -229,11 +229,18 @@ pub fn unwrap_mcp_tool_result(result: CallToolResult) -> Result<Value> {
     }
 
     Ok(Value::Array(
-        texts.into_iter().map(|t| Value::String(t.to_string())).collect(),
+        texts
+            .into_iter()
+            .map(|t| Value::String(t.to_string()))
+            .collect(),
     ))
 }
 
-fn build_stdio_command(command: &str, args: &[String], env: &[(String, String)]) -> tokio::process::Command {
+fn build_stdio_command(
+    command: &str,
+    args: &[String],
+    env: &[(String, String)],
+) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(command);
     cmd.args(args);
     for (k, v) in env {
@@ -350,7 +357,8 @@ mod tests {
 
     #[test]
     fn multiple_text_blocks_join_into_array() {
-        let result = CallToolResult::success(vec![ContentBlock::text("a"), ContentBlock::text("b")]);
+        let result =
+            CallToolResult::success(vec![ContentBlock::text("a"), ContentBlock::text("b")]);
         let value = unwrap_mcp_tool_result(result).unwrap();
         assert_eq!(value, serde_json::json!(["a", "b"]));
     }
@@ -463,10 +471,10 @@ mod integration_tests {
             let _ = server.waiting().await;
         });
 
-        let service: McpConnection = ()
-            .serve(client_io)
-            .await
-            .expect("client should connect to fixture server");
+        let service: McpConnection =
+            ().serve(client_io)
+                .await
+                .expect("client should connect to fixture server");
 
         McpToolSource {
             name: name.to_string(),

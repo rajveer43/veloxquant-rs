@@ -533,16 +533,12 @@ mod run_tests {
 
     #[tokio::test]
     async fn run_returns_immediately_when_no_tool_calls() {
-        let (base_url, requests) = spawn_sequenced_json_server(vec![
-            r#"{"id":"1","model":"m","text":"hello there"}"#,
-        ])
-        .await;
+        let (base_url, requests) =
+            spawn_sequenced_json_server(vec![r#"{"id":"1","model":"m","text":"hello there"}"#])
+                .await;
 
         let agent = Agent::new(client_for(&base_url), "m");
-        let result = agent
-            .run("hi", AgentRunOptions::default())
-            .await
-            .unwrap();
+        let result = agent.run("hi", AgentRunOptions::default()).await.unwrap();
 
         assert_eq!(result.text, "hello there");
         assert!(result.steps.is_empty());
@@ -560,10 +556,7 @@ mod run_tests {
         let mut agent = Agent::new(client_for(&base_url), "m");
         agent.tool(Box::new(NoopTool)).unwrap();
 
-        let result = agent
-            .run("hi", AgentRunOptions::default())
-            .await
-            .unwrap();
+        let result = agent.run("hi", AgentRunOptions::default()).await.unwrap();
 
         assert_eq!(result.text, "done");
         assert_eq!(result.steps.len(), 1);

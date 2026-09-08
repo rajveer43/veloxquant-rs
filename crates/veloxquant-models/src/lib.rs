@@ -410,8 +410,7 @@ mod tests {
     #[tokio::test]
     async fn list_local_models_empty_repos_is_empty_list() {
         let dir = tempdir();
-        let interpreter =
-            fixture_interpreter(dir.path(), "#!/bin/sh\necho '{\"repos\":[]}'\n");
+        let interpreter = fixture_interpreter(dir.path(), "#!/bin/sh\necho '{\"repos\":[]}'\n");
 
         let models = list_local_models(&interpreter).await.unwrap();
         assert!(models.is_empty());
@@ -427,7 +426,9 @@ mod tests {
 
         let err = list_local_models(&interpreter).await.unwrap_err();
         assert!(matches!(err, VeloxQuantError::ModelScanFailed(_)));
-        assert!(err.to_string().contains("huggingface_hub is not importable"));
+        assert!(err
+            .to_string()
+            .contains("huggingface_hub is not importable"));
     }
 
     #[tokio::test]

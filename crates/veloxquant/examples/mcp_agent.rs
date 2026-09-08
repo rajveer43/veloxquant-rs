@@ -34,7 +34,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let result = agent
-        .run("What tools do you have available?", AgentRunOptions::default())
+        .run(
+            "What tools do you have available?",
+            AgentRunOptions::default(),
+        )
         .await?;
 
     println!("Final response: {}", result.text);

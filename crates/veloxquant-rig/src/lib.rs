@@ -262,7 +262,10 @@ impl CompletionModel for VeloxQuantCompletionModel {
             Ok(final_record)
         });
 
-        Ok(StreamingCompletionResponse::stream("veloxquant", normalized))
+        Ok(StreamingCompletionResponse::stream(
+            "veloxquant",
+            normalized,
+        ))
     }
 }
 
@@ -299,7 +302,9 @@ mod tests {
     fn to_vq_message_rejects_non_text_user_content() {
         let msg = RigMsg::User {
             content: vec![UserContent::Image(rig_core::message::Image {
-                data: rig_core::message::DocumentSourceKind::Url("https://example.com/x.png".into()),
+                data: rig_core::message::DocumentSourceKind::Url(
+                    "https://example.com/x.png".into(),
+                ),
                 media_type: None,
                 detail: None,
                 additional_params: None,
