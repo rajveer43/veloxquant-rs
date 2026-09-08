@@ -1,9 +1,21 @@
-use std::time::Instant;
-
 use anyhow::{anyhow, Result};
-use veloxquant::{format_bytes, Client, MemoryRequest, Message, ModelArchitecture, Precision};
+use veloxquant::{benchmark_pass, format_bytes, BenchmarkInput, Client, MemoryRequest, ModelArchitecture, Precision};
 
-pub async fn run(model: &str, context: usize, prompt: &str) -> Result<()> {
+/// `vq benchmark <model>` — benchmarks tokens/sec and time-to-first-token
+/// for `model` against a running VeloxQuant runtime, via the reusable
+/// `veloxquant::benchmark_pass` library function (see
+/// `crates/veloxquant/src/benchmark.rs`). Also reports estimated peak
+/// memory/KV-cache/compression ratio for context, matching this command's
+/// previous output shape.
+///
+/// This is a single-pass report (one model, whatever method the runtime
+/// happens to be currently serving) — `veloxquant::benchmark`'s full
+/// two-pass default-vs-optimized comparison isn't wired into the CLI,
+/// since this SDK has no way to make the runtime switch methods between
+/// passes (see `benchmark.rs`'s module doc comment for why); a caller
+/// wanting that comparison should call `veloxquant::benchmark` directly,
+/// restarting the runtime with a different method between calls.
+pub async fn run(model: &str, context: usize, _prompt: &str) -> Result<()> {
     let client = Client::builder().build()?;
 
     let status = client.runtime().health().await;
@@ -19,23 +31,14 @@ pub async fn run(model: &str, context: usize, prompt: &str) -> Result<()> {
             .memory()
             .estimate(&MemoryRequest::new(architecture, context, Precision::Int4))?;
 
-    let start = Instant::now();
-    let response = client
-        .chat()?
-        .create(model, vec![Message::user(prompt)])
-        .await?;
-    let elapsed = start.elapsed();
-
-    let tokens_per_sec = if elapsed.as_secs_f64() > 0.0 && response.usage.completion_tokens > 0 {
-        response.usage.completion_tokens as f64 / elapsed.as_secs_f64()
-    } else {
-        0.0
-    };
+    let pass = benchmark_pass(&client, BenchmarkInput::new(model))
+        .await
+        .map_err(|e| anyhow!("benchmark failed: {e}"))?;
 
     println!("VeloxQuant Benchmark\n");
     println!("Model:\n{model}\n");
-    println!("Tokens/sec:\n{tokens_per_sec:.1}\n");
-    println!("Total Duration:\n{:.0?}\n", elapsed);
+    println!("Tokens/sec:\n{:.1}\n", pass.timing.tokens_per_second);
+    println!("TTFT:\n{:.0}ms\n", pass.timing.time_to_first_token_ms);
     println!(
         "Peak Memory (estimated):\n{}\n",
         format_bytes(estimate.total_memory_bytes)

@@ -25,6 +25,8 @@
 #[cfg(feature = "agent")]
 pub mod agent;
 #[cfg(feature = "openai")]
+pub mod benchmark;
+#[cfg(feature = "openai")]
 pub mod chat;
 pub mod client;
 #[cfg(feature = "mcp")]
@@ -67,4 +69,10 @@ pub use agent::{Agent, AgentRunOptions, AgentRunResult, AgentStep, Tool};
 #[cfg(feature = "mcp")]
 pub use mcp::{
     connect_mcp_server, unwrap_mcp_tool_result, McpServerConfig, McpToolSource, McpTransport,
+};
+
+#[cfg(feature = "openai")]
+pub use benchmark::{
+    benchmark, benchmark_pass, resident_bytes, BenchmarkInput, BenchmarkPass, BenchmarkResult,
+    BenchmarkTiming,
 };

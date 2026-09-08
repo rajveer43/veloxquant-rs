@@ -22,7 +22,9 @@ veloxquant-monitor = { workspace = true, optional = true }
 veloxquant-models = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 serde_json = { workspace = true }
+futures-util = { workspace = true, optional = true }
 rmcp = { version = "3", optional = true, features = [
     "client",
     "transport-child-process",
@@ -61,7 +63,14 @@ required-features = ["mcp"]
 [features]
 default = ["runtime", "openai"]
 runtime = ["dep:veloxquant-runtime"]
-openai = ["dep:veloxquant-openai", "dep:reqwest", "runtime"]
+openai = [
+    "dep:veloxquant-openai",
+    "dep:reqwest",
+    "dep:serde",
+    "dep:futures-util",
+    "dep:tokio",
+    "runtime",
+]
 monitor = ["dep:veloxquant-monitor"]
 native-optimizers = []
 local-models = ["dep:veloxquant-models"]

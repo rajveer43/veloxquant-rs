@@ -260,6 +260,30 @@ a failed call never leaks a connection. Unsupported MCP content types
 `VeloxQuantError::UnsupportedMcpContent` rather than being silently
 dropped — see `examples/mcp_agent.rs`.
 
+## Benchmarking
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use veloxquant::{benchmark_pass, BenchmarkInput, Client};
+
+let client = Client::builder().build()?;
+let pass = benchmark_pass(&client, BenchmarkInput::new("mlx-community/Qwen3-8B-4bit")).await?;
+println!("{:.1} tok/s, {:.0}ms TTFT", pass.timing.tokens_per_second, pass.timing.time_to_first_token_ms);
+# Ok(())
+# }
+```
+
+Behind the `openai` feature. `benchmark_pass` times a single generation
+against an already-reachable runtime at the SDK boundary (chunk arrival
+timestamps from the streaming chat API); `benchmark` runs two such passes
+sequentially (never concurrently) and `BenchmarkResult::to_markdown()`
+renders a report. Resident-memory (RSS) sampling is optional and PID-driven
+(`BenchmarkInput::pid`) — this SDK talks to an already-running runtime over
+HTTP and has no process-ownership concept to discover a PID from, unlike
+`@veloxquant/sdk`'s `benchmark()`, which spawns and owns the runtime
+process itself; see the doc comment on `veloxquant::benchmark` for the full
+rationale. `vq benchmark <model>` uses this under the hood.
+
 ## Monitoring
 
 `Monitor`/`Metrics` (behind the `monitor` feature) provide working

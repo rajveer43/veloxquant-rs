@@ -37,6 +37,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped. A tool-name collision when registering an MCP server's tools
   closes the newly-opened connection before returning an error. New
   `examples/mcp_agent.rs`.
+- `benchmark()`/`benchmark_pass()` (Phase 4): reusable library functions in
+  the facade crate (gated behind `openai`) measuring tokens/sec,
+  time-to-first-token, and (optionally, given a PID) resident memory (RSS,
+  via `ps -o rss= -p <pid>`) for a chat completion against an already
+  reachable runtime. `BenchmarkResult::to_markdown()` preserves
+  `benchmark.ts:103-106`'s "compression is accounting-only" caveat line
+  verbatim when optimized resident memory measures *higher* than the
+  default method's. Unlike `benchmark.ts`, this SDK has no
+  process-ownership concept for the runtime (no `Client::load()` spawning a
+  subprocess it can read a PID from), so `benchmark()` runs its two passes
+  sequentially against whatever the runtime is currently serving rather
+  than loading/reloading it itself — see the module doc comment in
+  `crates/veloxquant/src/benchmark.rs` for the full rationale. `vq
+  benchmark` now calls `benchmark_pass` under the hood instead of its
+  previous inline timing logic. The real, hardware-dependent two-pass
+  comparison is covered by `#[ignore]`d manual tests with instructions for
+  running them by hand — not claimed as CI coverage.
 
 ## [0.2.1] - 2026-09-03
 
