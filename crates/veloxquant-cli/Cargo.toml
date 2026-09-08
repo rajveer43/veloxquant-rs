@@ -16,7 +16,7 @@ name = "vq"
 path = "src/main.rs"
 
 [dependencies]
-veloxquant = { path = "../veloxquant", version = "0.2.1" }
+veloxquant = { path = "../veloxquant", version = "0.2.1", features = ["local-models"] }
 tokio = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }

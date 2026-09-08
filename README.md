@@ -11,6 +11,8 @@ Memory intelligence and optimization for local AI.
 | [`veloxquant-runtime`](crates/veloxquant-runtime) | [![crates.io](https://img.shields.io/crates/v/veloxquant-runtime.svg)](https://crates.io/crates/veloxquant-runtime) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-runtime)](https://docs.rs/veloxquant-runtime) |
 | [`veloxquant-openai`](crates/veloxquant-openai) | [![crates.io](https://img.shields.io/crates/v/veloxquant-openai.svg)](https://crates.io/crates/veloxquant-openai) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-openai)](https://docs.rs/veloxquant-openai) |
 | [`veloxquant-monitor`](crates/veloxquant-monitor) | [![crates.io](https://img.shields.io/crates/v/veloxquant-monitor.svg)](https://crates.io/crates/veloxquant-monitor) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-monitor)](https://docs.rs/veloxquant-monitor) |
+| [`veloxquant-models`](crates/veloxquant-models) | [![crates.io](https://img.shields.io/crates/v/veloxquant-models.svg)](https://crates.io/crates/veloxquant-models) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-models)](https://docs.rs/veloxquant-models) |
+| [`veloxquant-rig`](crates/veloxquant-rig) | [![crates.io](https://img.shields.io/crates/v/veloxquant-rig.svg)](https://crates.io/crates/veloxquant-rig) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-rig)](https://docs.rs/veloxquant-rig) |
 | [`veloxquant-cli`](crates/veloxquant-cli) (`vq`) | not published — see [prebuilt binaries](https://github.com/rajveer43/veloxquant-rs/releases) | — |
 
 `veloxquant` helps Rust developers detect Apple Silicon hardware, estimate
@@ -196,6 +198,129 @@ OpenAI request/response shape, both non-streamed (`create`) and
 SSE-streamed (`stream`). `GET /v1/models` is planned — see
 [Roadmap](#roadmap).
 
+## Agent (tool calling)
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use serde_json::{json, Value};
+use veloxquant::{Agent, AgentRunOptions, Client, Result, Tool};
+
+struct EchoTool;
+
+#[async_trait::async_trait]
+impl Tool for EchoTool {
+    fn name(&self) -> &str { "echo" }
+    fn parameters(&self) -> Value { json!({"type": "object"}) }
+    async fn execute(&self, args: Value) -> Result<Value> { Ok(args) }
+}
+
+let client = Client::builder().build()?;
+let mut agent = Agent::new(client, "mlx-community/Qwen3-8B-4bit");
+agent.tool(Box::new(EchoTool))?;
+
+let result = agent.run("say hi via the echo tool", AgentRunOptions::default()).await?;
+println!("{}", result.text);
+# Ok(())
+# }
+```
+
+Behind the `agent` feature (implies `openai`). `Agent::run` drives the same
+call-tools -> feed-results-back -> repeat loop as `@veloxquant/sdk`'s
+`agent.ts`: a malformed tool-call-arguments JSON, an unregistered tool name,
+or a failing tool execution all feed a structured error back as the tool
+result rather than aborting the run; exceeding `max_steps` (default 8)
+returns `VeloxQuantError::AgentMaxStepsExceeded`. See `examples/agent.rs`.
+
+## MCP tool sources
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use veloxquant::{Agent, Client, McpServerConfig, McpTransport};
+
+let client = Client::builder().build()?;
+let mut agent = Agent::new(client, "mlx-community/Qwen3-8B-4bit");
+
+agent.use_mcp_server(McpServerConfig {
+    name: "my-server".to_string(),
+    transport: McpTransport::Stdio {
+        command: "my-mcp-server".to_string(),
+        args: vec![],
+        env: vec![],
+    },
+}).await?;
+# Ok(())
+# }
+```
+
+Behind the `mcp` feature (implies `agent`), built on the official `rmcp`
+crate. `Agent::use_mcp_server` registers an MCP server's tools alongside any
+manually-registered ones, sharing one name/dispatch namespace; a tool-name
+collision closes the newly-opened connection before returning an error, so
+a failed call never leaks a connection. Unsupported MCP content types
+(image/audio/resource/resource_link) surface as
+`VeloxQuantError::UnsupportedMcpContent` rather than being silently
+dropped — see `examples/mcp_agent.rs`.
+
+## Benchmarking
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use veloxquant::{benchmark_pass, BenchmarkInput, Client};
+
+let client = Client::builder().build()?;
+let pass = benchmark_pass(&client, BenchmarkInput::new("mlx-community/Qwen3-8B-4bit")).await?;
+println!("{:.1} tok/s, {:.0}ms TTFT", pass.timing.tokens_per_second, pass.timing.time_to_first_token_ms);
+# Ok(())
+# }
+```
+
+Behind the `openai` feature. `benchmark_pass` times a single generation
+against an already-reachable runtime at the SDK boundary (chunk arrival
+timestamps from the streaming chat API); `benchmark` runs two such passes
+sequentially (never concurrently) and `BenchmarkResult::to_markdown()`
+renders a report. Resident-memory (RSS) sampling is optional and PID-driven
+(`BenchmarkInput::pid`) — this SDK talks to an already-running runtime over
+HTTP and has no process-ownership concept to discover a PID from, unlike
+`@veloxquant/sdk`'s `benchmark()`, which spawns and owns the runtime
+process itself; see the doc comment on `veloxquant::benchmark` for the full
+rationale. `vq benchmark <model>` uses this under the hood.
+
+## `rig` integration
+
+`crates/veloxquant-rig` (published independently, with its own crate
+version — not tied to the workspace's `0.2.1`) adapts a `veloxquant::Client`
+to [`rig-core`](https://crates.io/crates/rig-core)'s `CompletionModel`
+trait, so a local VeloxQuant runtime can be used as the completion backend
+in a `rig` pipeline/agent — mirroring the *shape* of Go's `langchain`
+adapter (a separate module so `rig-core` stays an opt-in dependency, never
+pulled into the core `veloxquant` facade crate), not a literal port, since
+`rig` has no equivalent of `langchaingo`'s single `llms.Model` interface.
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use rig_core::completion::CompletionModel;
+use veloxquant::Client;
+use veloxquant_rig::VeloxQuantCompletionModel;
+
+let client = Client::builder().build()?;
+let model = VeloxQuantCompletionModel::new(client, "mlx-community/Qwen3-8B-4bit");
+
+let request = model.completion_request("Hello!").build();
+let response = model.completion(request).await?;
+# Ok(())
+# }
+```
+
+Text-only: any non-text `rig` message content (images, audio, documents,
+tool calls/results, reasoning blocks) is rejected with an explicit
+`RigAdapterError::UnsupportedContent` rather than silently dropped, matching
+the VeloxQuant runtime's own text-only chat API and the Go adapter's stated
+behavior. `stream()` reuses the existing SSE transport
+(`veloxquant_openai::stream_chat_completions`) rather than a second SSE
+parser. See `crates/veloxquant-rig/examples/rig_integration.rs` (requires a
+running VeloxQuant runtime — not CI-verifiable, same honesty standard as the
+benchmark phase's hardware-dependent tests).
+
 ## Monitoring
 
 `Monitor`/`Metrics` (behind the `monitor` feature) provide working
@@ -229,7 +354,24 @@ vq analyze <model>     Analyze memory requirements for a model
 vq recommend           Recommend models and a profile for this hardware
 vq benchmark <model>   Benchmark inference performance (requires a running runtime)
 vq serve               Connect to (or report on) the VeloxQuant runtime
+vq models list         List models in the local Hugging Face cache
+vq models pull <id>    Download a model's weights into the local Hugging Face cache
+vq models delete <id>  Delete a model's weights from the local Hugging Face cache
 ```
+
+### Local model cache management
+
+`vq models list/pull/delete` (and the underlying
+`veloxquant::list_local_models`/`pull_local_model`/`delete_local_model`,
+behind the `local-models` feature) manage weights in the local Hugging Face
+cache by shelling out to a short Python snippet that uses
+`huggingface_hub`'s own `scan_cache_dir()`/`snapshot_download()`/
+`delete_revisions()` — the cache's content-addressed blob layout is owned
+by `huggingface_hub`, so this SDK doesn't reimplement it. Requires a Python
+interpreter with `huggingface_hub` importable (`PythonInterpreter::default()`
+uses `python3` on `$PATH`; construct `PythonInterpreter::new(path)` to point
+at a specific interpreter). This is distinct from `client.models()`, which
+lists the curated compression-method registry, not downloaded weights.
 
 ```text
 $ vq doctor
@@ -256,7 +398,10 @@ veloxquant                  facade crate: Client, ClientBuilder, re-exports
 ├── veloxquant-runtime       async client for a VeloxQuant runtime (health checks today)
 ├── veloxquant-openai        OpenAI-compatible wire types (chat request/response, models)
 ├── veloxquant-monitor       metrics types + broadcast-based pub/sub
+├── veloxquant-models        local Hugging Face model cache management (list/pull/delete)
 └── veloxquant-cli (vq)      command-line interface
+
+veloxquant-rig               rig-core CompletionModel adapter (independent crate/version, opt-in)
 ```
 
 Feature flags on the `veloxquant` crate let you opt out of what you don't need:
@@ -271,6 +416,9 @@ veloxquant = { version = "0.2", default-features = false, features = ["runtime"]
 | `runtime`           | ✓       | `Client::runtime()` (health checks)        |
 | `openai`            | ✓       | `Client::chat()` (implies `runtime`)       |
 | `monitor`           |         | `Monitor`/`Metrics` re-exports             |
+| `local-models`      |         | `list_local_models`/`pull_local_model`/`delete_local_model` (local Hugging Face cache management) |
+| `agent`             |         | `Agent`/`Tool` tool-calling loop (implies `openai`) |
+| `mcp`               |         | `Agent::use_mcp_server` and MCP tool sources (implies `agent`) |
 | `native-optimizers` |         | Reserved for native Rust compression (v0.5.0+); no implementation ships yet |
 
 ## Roadmap

@@ -7,8 +7,10 @@ members = [
     "crates/veloxquant-runtime",
     "crates/veloxquant-openai",
     "crates/veloxquant-monitor",
+    "crates/veloxquant-models",
     "crates/veloxquant-cli",
     "crates/veloxquant",
+    "crates/veloxquant-rig",
 ]
 
 [workspace.package]
@@ -29,6 +31,7 @@ veloxquant-memory = { path = "crates/veloxquant-memory", version = "0.2.1" }
 veloxquant-runtime = { path = "crates/veloxquant-runtime", version = "0.2.1" }
 veloxquant-openai = { path = "crates/veloxquant-openai", version = "0.2.1" }
 veloxquant-monitor = { path = "crates/veloxquant-monitor", version = "0.2.1" }
+veloxquant-models = { path = "crates/veloxquant-models", version = "0.2.1" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
@@ -38,6 +41,7 @@ thiserror = "2"
 futures-util = "0.3"
 async-stream = "0.3"
 sysinfo = "0.32"
+async-trait = "0.1"
 
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"

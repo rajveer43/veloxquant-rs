@@ -3,6 +3,7 @@
 mod analyze;
 mod benchmark;
 mod doctor;
+mod models;
 mod recommend;
 mod serve;
 
@@ -47,6 +48,27 @@ enum Command {
     },
     /// Connect to (or report on) the VeloxQuant runtime
     Serve,
+    /// Manage locally downloaded model weights (Hugging Face cache)
+    Models {
+        #[command(subcommand)]
+        command: ModelsCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelsCommand {
+    /// List models present in the local Hugging Face cache
+    List,
+    /// Download a model's weights into the local Hugging Face cache
+    Pull {
+        /// Hugging Face repo id, e.g. "mlx-community/Qwen3-8B-4bit"
+        model_id: String,
+    },
+    /// Delete a model's weights from the local Hugging Face cache
+    Delete {
+        /// Hugging Face repo id, e.g. "mlx-community/Qwen3-8B-4bit"
+        model_id: String,
+    },
 }
 
 #[tokio::main]
@@ -63,5 +85,10 @@ async fn main() -> Result<()> {
             prompt,
         } => benchmark::run(&model, context, &prompt).await,
         Command::Serve => serve::run().await,
+        Command::Models { command } => match command {
+            ModelsCommand::List => models::list().await,
+            ModelsCommand::Pull { model_id } => models::pull(&model_id).await,
+            ModelsCommand::Delete { model_id } => models::delete(&model_id).await,
+        },
     }
 }

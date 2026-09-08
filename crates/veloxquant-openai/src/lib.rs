@@ -11,7 +11,8 @@ pub mod models;
 pub mod streaming;
 
 pub use chat::{
-    stream_chat_completions, ChatRequest, ChatResponse, InferenceMetrics, Message, Role, Usage,
+    stream_chat_completions, ChatRequest, ChatResponse, FunctionCall, FunctionDefinition,
+    InferenceMetrics, Message, Role, ToolCall, ToolDefinition, ToolDefinitionKind, Usage,
 };
 pub use models::RemoteModel;
 pub use streaming::{ChatChunk, ChatStream};

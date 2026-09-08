@@ -10,7 +10,8 @@ pub const DEFAULT_RUNTIME_URL: &str = "http://localhost:8765";
 /// Default per-request timeout.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Resolved configuration for a [`Client`](crate::client::Client).
+/// Resolved configuration for a `Client` (see the `veloxquant` facade
+/// crate's `Client`, which this type backs).
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Base URL of the VeloxQuant runtime (or an OpenAI-compatible endpoint).
