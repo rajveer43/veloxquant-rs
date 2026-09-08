@@ -10,6 +10,7 @@ members = [
     "crates/veloxquant-models",
     "crates/veloxquant-cli",
     "crates/veloxquant",
+    "crates/veloxquant-rig",
 ]
 
 [workspace.package]

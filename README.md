@@ -12,6 +12,7 @@ Memory intelligence and optimization for local AI.
 | [`veloxquant-openai`](crates/veloxquant-openai) | [![crates.io](https://img.shields.io/crates/v/veloxquant-openai.svg)](https://crates.io/crates/veloxquant-openai) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-openai)](https://docs.rs/veloxquant-openai) |
 | [`veloxquant-monitor`](crates/veloxquant-monitor) | [![crates.io](https://img.shields.io/crates/v/veloxquant-monitor.svg)](https://crates.io/crates/veloxquant-monitor) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-monitor)](https://docs.rs/veloxquant-monitor) |
 | [`veloxquant-models`](crates/veloxquant-models) | [![crates.io](https://img.shields.io/crates/v/veloxquant-models.svg)](https://crates.io/crates/veloxquant-models) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-models)](https://docs.rs/veloxquant-models) |
+| [`veloxquant-rig`](crates/veloxquant-rig) | [![crates.io](https://img.shields.io/crates/v/veloxquant-rig.svg)](https://crates.io/crates/veloxquant-rig) | [![docs.rs](https://img.shields.io/docsrs/veloxquant-rig)](https://docs.rs/veloxquant-rig) |
 | [`veloxquant-cli`](crates/veloxquant-cli) (`vq`) | not published — see [prebuilt binaries](https://github.com/rajveer43/veloxquant-rs/releases) | — |
 
 `veloxquant` helps Rust developers detect Apple Silicon hardware, estimate
@@ -284,6 +285,42 @@ HTTP and has no process-ownership concept to discover a PID from, unlike
 process itself; see the doc comment on `veloxquant::benchmark` for the full
 rationale. `vq benchmark <model>` uses this under the hood.
 
+## `rig` integration
+
+`crates/veloxquant-rig` (published independently, with its own crate
+version — not tied to the workspace's `0.2.1`) adapts a `veloxquant::Client`
+to [`rig-core`](https://crates.io/crates/rig-core)'s `CompletionModel`
+trait, so a local VeloxQuant runtime can be used as the completion backend
+in a `rig` pipeline/agent — mirroring the *shape* of Go's `langchain`
+adapter (a separate module so `rig-core` stays an opt-in dependency, never
+pulled into the core `veloxquant` facade crate), not a literal port, since
+`rig` has no equivalent of `langchaingo`'s single `llms.Model` interface.
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use rig_core::completion::CompletionModel;
+use veloxquant::Client;
+use veloxquant_rig::VeloxQuantCompletionModel;
+
+let client = Client::builder().build()?;
+let model = VeloxQuantCompletionModel::new(client, "mlx-community/Qwen3-8B-4bit");
+
+let request = model.completion_request("Hello!").build();
+let response = model.completion(request).await?;
+# Ok(())
+# }
+```
+
+Text-only: any non-text `rig` message content (images, audio, documents,
+tool calls/results, reasoning blocks) is rejected with an explicit
+`RigAdapterError::UnsupportedContent` rather than silently dropped, matching
+the VeloxQuant runtime's own text-only chat API and the Go adapter's stated
+behavior. `stream()` reuses the existing SSE transport
+(`veloxquant_openai::stream_chat_completions`) rather than a second SSE
+parser. See `crates/veloxquant-rig/examples/rig_integration.rs` (requires a
+running VeloxQuant runtime — not CI-verifiable, same honesty standard as the
+benchmark phase's hardware-dependent tests).
+
 ## Monitoring
 
 `Monitor`/`Metrics` (behind the `monitor` feature) provide working
@@ -363,6 +400,8 @@ veloxquant                  facade crate: Client, ClientBuilder, re-exports
 ├── veloxquant-monitor       metrics types + broadcast-based pub/sub
 ├── veloxquant-models        local Hugging Face model cache management (list/pull/delete)
 └── veloxquant-cli (vq)      command-line interface
+
+veloxquant-rig               rig-core CompletionModel adapter (independent crate/version, opt-in)
 ```
 
 Feature flags on the `veloxquant` crate let you opt out of what you don't need:

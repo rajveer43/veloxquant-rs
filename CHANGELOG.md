@@ -54,6 +54,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   previous inline timing logic. The real, hardware-dependent two-pass
   comparison is covered by `#[ignore]`d manual tests with instructions for
   running them by hand — not claimed as CI coverage.
+- `rig-core` `CompletionModel` adapter (Phase 5, final phase of SDK parity):
+  new, independently-versioned `veloxquant-rig` crate
+  (`VeloxQuantCompletionModel`) implementing `rig-core` 0.42's
+  `CompletionModel` trait (`completion`/`stream`), backed by a
+  `veloxquant::Client`. Mirrors the *shape* of Go's `langchain` adapter
+  (a separate crate/module keeping the third-party framework dependency
+  opt-in) rather than a literal port, since `rig` has no equivalent of
+  `langchaingo`'s single `llms.Model` interface. Text-only: any non-text
+  `rig` message content (images, audio, documents, tool calls/results,
+  reasoning blocks) is rejected with an explicit
+  `RigAdapterError::UnsupportedContent` rather than silently dropped.
+  `stream()` reuses the existing SSE transport
+  (`veloxquant_openai::stream_chat_completions`) rather than a second SSE
+  parser, verified end-to-end against a real fixture SSE server. New
+  `crates/veloxquant-rig/examples/rig_integration.rs` (manual verification
+  against a running VeloxQuant runtime, documented as such — not
+  CI-verifiable).
 
 ## [0.2.1] - 2026-09-03
 
