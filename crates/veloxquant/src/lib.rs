@@ -22,9 +22,13 @@
 //! See the crate [README](https://github.com/rajveer43/veloxquant-rs) for
 //! the full feature roadmap and CLI documentation.
 
+#[cfg(feature = "agent")]
+pub mod agent;
 #[cfg(feature = "openai")]
 pub mod chat;
 pub mod client;
+#[cfg(feature = "mcp")]
+pub mod mcp;
 pub mod models;
 
 pub use client::{Client, ClientBuilder};
@@ -40,7 +44,10 @@ pub use veloxquant_system::SystemInfo;
 #[cfg(feature = "openai")]
 pub use chat::ChatApi;
 #[cfg(feature = "openai")]
-pub use veloxquant_openai::{ChatResponse, Message, RemoteModel, Role};
+pub use veloxquant_openai::{
+    ChatRequest, ChatResponse, FunctionCall, FunctionDefinition, Message, RemoteModel, Role,
+    ToolCall, ToolDefinition, ToolDefinitionKind,
+};
 
 #[cfg(feature = "runtime")]
 pub use veloxquant_runtime::RuntimeStatus;
@@ -52,4 +59,12 @@ pub use veloxquant_monitor::{Metrics, Monitor};
 pub use veloxquant_models::{
     delete_local_model, list_local_models, pull_local_model, DeleteModelResult, LocalModel,
     PullModelResult, PythonInterpreter,
+};
+
+#[cfg(feature = "agent")]
+pub use agent::{Agent, AgentRunOptions, AgentRunResult, AgentStep, Tool};
+
+#[cfg(feature = "mcp")]
+pub use mcp::{
+    connect_mcp_server, unwrap_mcp_tool_result, McpServerConfig, McpToolSource, McpTransport,
 };

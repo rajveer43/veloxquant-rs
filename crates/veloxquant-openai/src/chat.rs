@@ -23,12 +23,27 @@ pub enum Role {
 }
 
 /// A single chat message.
+///
+/// The `tool_calls` field is populated on an assistant message that
+/// requested one or more tool invocations; `tool_call_id` identifies which
+/// tool call a `Role::Tool` message is a result for. Both are OpenAI's
+/// standard `tools`/`tool_calls` wire shape, reused as-is (not a bespoke
+/// schema) so it round-trips through any OpenAI-compatible runtime.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     /// Who authored this message.
     pub role: Role,
     /// The message text.
+    #[serde(default)]
     pub content: String,
+    /// Tool calls requested by the model, present on assistant messages
+    /// that call one or more tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    /// The id of the tool call this message is the result of, present on
+    /// `Role::Tool` messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 impl Message {
@@ -37,6 +52,8 @@ impl Message {
         Self {
             role: Role::System,
             content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -45,6 +62,8 @@ impl Message {
         Self {
             role: Role::User,
             content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -53,8 +72,97 @@ impl Message {
         Self {
             role: Role::Assistant,
             content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
+
+    /// Creates an assistant message carrying tool calls the model
+    /// requested, alongside any accompanying text content.
+    pub fn assistant_with_tool_calls(content: impl Into<String>, tool_calls: Vec<ToolCall>) -> Self {
+        Self {
+            role: Role::Assistant,
+            content: content.into(),
+            tool_calls: Some(tool_calls),
+            tool_call_id: None,
+        }
+    }
+
+    /// Creates a tool-result message reporting the outcome of executing
+    /// `tool_call_id`.
+    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: Role::Tool,
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id.into()),
+        }
+    }
+}
+
+/// A tool the model may call, in OpenAI's `tools` request-field shape.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolDefinition {
+    /// Always `"function"` — the only tool type OpenAI-compatible APIs
+    /// currently support.
+    #[serde(rename = "type")]
+    pub kind: ToolDefinitionKind,
+    /// The function being declared.
+    pub function: FunctionDefinition,
+}
+
+/// The `type` discriminant of a [`ToolDefinition`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolDefinitionKind {
+    /// A callable function tool.
+    Function,
+}
+
+/// The `function` field of a [`ToolDefinition`]: the tool's name,
+/// description, and JSON Schema parameters.
+#[derive(Debug, Clone, Serialize)]
+pub struct FunctionDefinition {
+    /// The tool's name, used by the model to reference it in a tool call.
+    pub name: String,
+    /// A human-readable description of what the tool does.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// JSON Schema describing the tool's arguments object.
+    pub parameters: serde_json::Value,
+}
+
+/// A single tool invocation requested by the model, in OpenAI's
+/// `tool_calls` response-field shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    /// Unique id for this tool call, echoed back in the corresponding
+    /// `Role::Tool` result message's `tool_call_id`.
+    pub id: String,
+    /// Always `"function"`.
+    #[serde(rename = "type", default = "default_tool_call_type")]
+    pub kind: String,
+    /// The function name and (JSON-encoded) arguments the model wants
+    /// invoked.
+    pub function: FunctionCall,
+}
+
+fn default_tool_call_type() -> String {
+    "function".to_string()
+}
+
+/// The `function` field of a [`ToolCall`]: which function to call, and its
+/// arguments as a raw (not-yet-parsed) JSON string — matching OpenAI's wire
+/// shape, where `arguments` is a string the caller must `JSON.parse`
+/// (`argumentsJson` in `agent.ts`), not a nested object, since the model
+/// can (and sometimes does) emit malformed JSON here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    /// The name of the tool to call.
+    pub name: String,
+    /// The tool's arguments, JSON-encoded as a string.
+    #[serde(default)]
+    pub arguments: String,
 }
 
 /// A chat completion request.
@@ -70,8 +178,30 @@ pub struct ChatRequest {
     /// Maximum tokens to generate, if overriding the runtime default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    /// Tools the model may call, in OpenAI's `tools` field shape. `None`
+    /// (the field is omitted from the request entirely, matching
+    /// `agent.ts:131`'s `tools.length > 0 ? tools : undefined`) when no
+    /// tools are registered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<ToolDefinition>>,
     /// Whether the response should be streamed as incremental chunks.
     pub stream: bool,
+}
+
+impl ChatRequest {
+    /// Creates a minimal chat request with no sampling overrides, no
+    /// tools, and non-streamed output — the common case for callers that
+    /// only need `model`/`messages`.
+    pub fn new(model: impl Into<String>, messages: Vec<Message>) -> Self {
+        Self {
+            model: model.into(),
+            messages,
+            temperature: None,
+            max_tokens: None,
+            tools: None,
+            stream: false,
+        }
+    }
 }
 
 /// Token usage reported for a chat completion.
@@ -102,7 +232,12 @@ pub struct ChatResponse {
     /// Model that produced the completion.
     pub model: String,
     /// The generated text.
+    #[serde(default)]
     pub text: String,
+    /// Tool calls the model requested, if any. `None`/empty means the
+    /// model returned a final response instead of calling a tool.
+    #[serde(default)]
+    pub tool_calls: Option<Vec<ToolCall>>,
     /// Token usage for this request.
     #[serde(default)]
     pub usage: Usage,
@@ -193,6 +328,7 @@ mod tests {
             messages: vec![Message::user("hi")],
             temperature: None,
             max_tokens: None,
+            tools: None,
             stream: false,
         };
         let json = serde_json::to_string(&req).unwrap();
@@ -261,6 +397,7 @@ mod streaming_tests {
             messages: vec![Message::user("hi")],
             temperature: None,
             max_tokens: None,
+            tools: None,
             stream: false,
         };
         let mut stream = stream_chat_completions(http, &base_url, request)
@@ -287,6 +424,7 @@ mod streaming_tests {
             messages: vec![Message::user("hi")],
             temperature: None,
             max_tokens: None,
+            tools: None,
             stream: false,
         };
         let mut stream = stream_chat_completions(http, &base_url, request)
@@ -327,6 +465,7 @@ mod streaming_tests {
             messages: vec![Message::user("hi")],
             temperature: None,
             max_tokens: None,
+            tools: None,
             stream: false,
         };
         let mut stream = stream_chat_completions(http, &format!("http://{addr}"), request)
@@ -353,6 +492,7 @@ mod streaming_tests {
             messages: vec![Message::user("hi")],
             temperature: None,
             max_tokens: None,
+            tools: None,
             stream: false,
         };
         let mut stream = stream_chat_completions(http, &base_url, request)
@@ -381,6 +521,7 @@ mod streaming_tests {
             messages: vec![Message::user("hi")],
             temperature: None,
             max_tokens: None,
+            tools: None,
             stream: false,
         };
         let result = stream_chat_completions(http, "http://127.0.0.1:1", request).await;

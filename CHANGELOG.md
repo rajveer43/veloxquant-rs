@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Local Hugging Face model cache management (Phase 1 of SDK parity with
+  `@veloxquant/sdk`): new `veloxquant-models` crate with
+  `list_local_models`/`pull_local_model`/`delete_local_model`, shelling out
+  to `huggingface_hub`'s `scan_cache_dir()`/`snapshot_download()`/
+  `delete_revisions()` via a Python subprocess (model ids are always passed
+  as a separate argv element, never interpolated into the Python source, as
+  a command-injection mitigation). Re-exported from the `veloxquant` facade
+  crate behind a new `local-models` feature. New `vq models list/pull/delete`
+  CLI subcommands.
+- `Agent` tool-calling loop (Phase 2 of SDK parity): `Agent::new`/`tool`/`run`
+  in the `veloxquant` facade crate, gated behind a new `agent` feature. Adds
+  `tools`/`tool_calls` wire types (`ToolDefinition`, `ToolCall`,
+  `FunctionDefinition`, `FunctionCall`) to `veloxquant-openai`'s chat types
+  and `ChatApi::send` for full-request chat calls. Matches
+  `agent.ts:122-181`'s run loop exactly: malformed tool-call-arguments JSON,
+  an unregistered tool name, or a failing tool execution all feed a
+  structured error back as the tool result rather than aborting the run;
+  exceeding `max_steps` (default 8) returns
+  `VeloxQuantError::AgentMaxStepsExceeded`. New `examples/agent.rs`.
+- MCP tool sources (Phase 3): `veloxquant::mcp` module (`McpTransport`,
+  `McpServerConfig`, `McpToolSource`, `connect_mcp_server`,
+  `unwrap_mcp_tool_result`) and `Agent::use_mcp_server`, gated behind a new
+  `mcp` feature (depends on `agent`). Built on the official `rmcp` crate.
+  Unsupported MCP content types (image/audio/resource/resource_link) return
+  `VeloxQuantError::UnsupportedMcpContent` rather than being silently
+  dropped. A tool-name collision when registering an MCP server's tools
+  closes the newly-opened connection before returning an error. New
+  `examples/mcp_agent.rs`.
+
 ## [0.2.1] - 2026-09-03
 
 ### Added

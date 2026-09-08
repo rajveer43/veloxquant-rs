@@ -38,8 +38,24 @@ impl ChatApi {
             messages,
             temperature: None,
             max_tokens: None,
+            tools: None,
             stream: false,
         };
+
+        self.send(request).await
+    }
+
+    /// Sends a fully-specified [`ChatRequest`] (e.g. one carrying `tools`
+    /// or sampling overrides) and waits for the full response.
+    ///
+    /// This is the lower-level entry point [`create`](Self::create) is
+    /// built on; callers that need `tools` (see the `agent` feature's
+    /// `Agent`) or other request fields not exposed by `create`'s
+    /// convenience signature should use this directly. `request.stream` is
+    /// forced to `false` regardless of the value passed in — use
+    /// [`stream`](Self::stream) for streamed output.
+    pub async fn send(&self, mut request: ChatRequest) -> Result<ChatResponse> {
+        request.stream = false;
 
         let url = format!(
             "{}/v1/chat/completions",
@@ -96,6 +112,7 @@ impl ChatApi {
             messages,
             temperature: None,
             max_tokens: None,
+            tools: None,
             stream: true,
         };
 

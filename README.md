@@ -197,6 +197,69 @@ OpenAI request/response shape, both non-streamed (`create`) and
 SSE-streamed (`stream`). `GET /v1/models` is planned — see
 [Roadmap](#roadmap).
 
+## Agent (tool calling)
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use serde_json::{json, Value};
+use veloxquant::{Agent, AgentRunOptions, Client, Result, Tool};
+
+struct EchoTool;
+
+#[async_trait::async_trait]
+impl Tool for EchoTool {
+    fn name(&self) -> &str { "echo" }
+    fn parameters(&self) -> Value { json!({"type": "object"}) }
+    async fn execute(&self, args: Value) -> Result<Value> { Ok(args) }
+}
+
+let client = Client::builder().build()?;
+let mut agent = Agent::new(client, "mlx-community/Qwen3-8B-4bit");
+agent.tool(Box::new(EchoTool))?;
+
+let result = agent.run("say hi via the echo tool", AgentRunOptions::default()).await?;
+println!("{}", result.text);
+# Ok(())
+# }
+```
+
+Behind the `agent` feature (implies `openai`). `Agent::run` drives the same
+call-tools -> feed-results-back -> repeat loop as `@veloxquant/sdk`'s
+`agent.ts`: a malformed tool-call-arguments JSON, an unregistered tool name,
+or a failing tool execution all feed a structured error back as the tool
+result rather than aborting the run; exceeding `max_steps` (default 8)
+returns `VeloxQuantError::AgentMaxStepsExceeded`. See `examples/agent.rs`.
+
+## MCP tool sources
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use veloxquant::{Agent, Client, McpServerConfig, McpTransport};
+
+let client = Client::builder().build()?;
+let mut agent = Agent::new(client, "mlx-community/Qwen3-8B-4bit");
+
+agent.use_mcp_server(McpServerConfig {
+    name: "my-server".to_string(),
+    transport: McpTransport::Stdio {
+        command: "my-mcp-server".to_string(),
+        args: vec![],
+        env: vec![],
+    },
+}).await?;
+# Ok(())
+# }
+```
+
+Behind the `mcp` feature (implies `agent`), built on the official `rmcp`
+crate. `Agent::use_mcp_server` registers an MCP server's tools alongside any
+manually-registered ones, sharing one name/dispatch namespace; a tool-name
+collision closes the newly-opened connection before returning an error, so
+a failed call never leaks a connection. Unsupported MCP content types
+(image/audio/resource/resource_link) surface as
+`VeloxQuantError::UnsupportedMcpContent` rather than being silently
+dropped — see `examples/mcp_agent.rs`.
+
 ## Monitoring
 
 `Monitor`/`Metrics` (behind the `monitor` feature) provide working
@@ -230,7 +293,24 @@ vq analyze <model>     Analyze memory requirements for a model
 vq recommend           Recommend models and a profile for this hardware
 vq benchmark <model>   Benchmark inference performance (requires a running runtime)
 vq serve               Connect to (or report on) the VeloxQuant runtime
+vq models list         List models in the local Hugging Face cache
+vq models pull <id>    Download a model's weights into the local Hugging Face cache
+vq models delete <id>  Delete a model's weights from the local Hugging Face cache
 ```
+
+### Local model cache management
+
+`vq models list/pull/delete` (and the underlying
+`veloxquant::list_local_models`/`pull_local_model`/`delete_local_model`,
+behind the `local-models` feature) manage weights in the local Hugging Face
+cache by shelling out to a short Python snippet that uses
+`huggingface_hub`'s own `scan_cache_dir()`/`snapshot_download()`/
+`delete_revisions()` — the cache's content-addressed blob layout is owned
+by `huggingface_hub`, so this SDK doesn't reimplement it. Requires a Python
+interpreter with `huggingface_hub` importable (`PythonInterpreter::default()`
+uses `python3` on `$PATH`; construct `PythonInterpreter::new(path)` to point
+at a specific interpreter). This is distinct from `client.models()`, which
+lists the curated compression-method registry, not downloaded weights.
 
 ```text
 $ vq doctor
@@ -257,6 +337,7 @@ veloxquant                  facade crate: Client, ClientBuilder, re-exports
 ├── veloxquant-runtime       async client for a VeloxQuant runtime (health checks today)
 ├── veloxquant-openai        OpenAI-compatible wire types (chat request/response, models)
 ├── veloxquant-monitor       metrics types + broadcast-based pub/sub
+├── veloxquant-models        local Hugging Face model cache management (list/pull/delete)
 └── veloxquant-cli (vq)      command-line interface
 ```
 
@@ -272,6 +353,9 @@ veloxquant = { version = "0.2", default-features = false, features = ["runtime"]
 | `runtime`           | ✓       | `Client::runtime()` (health checks)        |
 | `openai`            | ✓       | `Client::chat()` (implies `runtime`)       |
 | `monitor`           |         | `Monitor`/`Metrics` re-exports             |
+| `local-models`      |         | `list_local_models`/`pull_local_model`/`delete_local_model` (local Hugging Face cache management) |
+| `agent`             |         | `Agent`/`Tool` tool-calling loop (implies `openai`) |
+| `mcp`               |         | `Agent::use_mcp_server` and MCP tool sources (implies `agent`) |
 | `native-optimizers` |         | Reserved for native Rust compression (v0.5.0+); no implementation ships yet |
 
 ## Roadmap
