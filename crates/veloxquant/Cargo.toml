@@ -19,6 +19,7 @@ veloxquant-memory = { workspace = true }
 veloxquant-runtime = { workspace = true, optional = true }
 veloxquant-openai = { workspace = true, optional = true }
 veloxquant-monitor = { workspace = true, optional = true }
+veloxquant-models = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -45,3 +46,4 @@ runtime = ["dep:veloxquant-runtime"]
 openai = ["dep:veloxquant-openai", "dep:reqwest", "runtime"]
 monitor = ["dep:veloxquant-monitor"]
 native-optimizers = []
+local-models = ["dep:veloxquant-models"]

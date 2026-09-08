@@ -7,6 +7,7 @@ members = [
     "crates/veloxquant-runtime",
     "crates/veloxquant-openai",
     "crates/veloxquant-monitor",
+    "crates/veloxquant-models",
     "crates/veloxquant-cli",
     "crates/veloxquant",
 ]
@@ -29,6 +30,7 @@ veloxquant-memory = { path = "crates/veloxquant-memory", version = "0.2.1" }
 veloxquant-runtime = { path = "crates/veloxquant-runtime", version = "0.2.1" }
 veloxquant-openai = { path = "crates/veloxquant-openai", version = "0.2.1" }
 veloxquant-monitor = { path = "crates/veloxquant-monitor", version = "0.2.1" }
+veloxquant-models = { path = "crates/veloxquant-models", version = "0.2.1" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }

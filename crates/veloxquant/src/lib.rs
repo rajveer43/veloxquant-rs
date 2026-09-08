@@ -47,3 +47,9 @@ pub use veloxquant_runtime::RuntimeStatus;
 
 #[cfg(feature = "monitor")]
 pub use veloxquant_monitor::{Metrics, Monitor};
+
+#[cfg(feature = "local-models")]
+pub use veloxquant_models::{
+    delete_local_model, list_local_models, pull_local_model, DeleteModelResult, LocalModel,
+    PullModelResult, PythonInterpreter,
+};
