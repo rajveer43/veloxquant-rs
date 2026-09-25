@@ -2542,7 +2542,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -2564,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-cli"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2574,7 +2574,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-core"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -2584,7 +2584,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-memory"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "serde",
  "veloxquant-core",
@@ -2592,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-models"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2602,15 +2602,17 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-monitor"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
+ "async-trait",
  "tokio",
  "veloxquant-core",
+ "veloxquant-system",
 ]
 
 [[package]]
 name = "veloxquant-openai"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "async-stream",
  "futures-util",
@@ -2638,7 +2640,7 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-runtime"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -2650,8 +2652,9 @@ dependencies = [
 
 [[package]]
 name = "veloxquant-system"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
+ "libc",
  "serde",
  "sysinfo",
  "veloxquant-core",

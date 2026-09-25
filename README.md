@@ -25,21 +25,32 @@ ecosystem, alongside VeloxQuant-MLX (Python), VeloxQuant Studio (macOS),
 VeloxQuant VS Code, and SDKs for [Go](https://github.com/rajveer43/veloxquant-go)
 and [TypeScript](https://github.com/rajveer43/veloxquant-sdk).
 
-> **Status:** v0.2.0. Hardware detection, memory/KV-cache estimation,
-> optimization recommendations, the model registry, and chat (both
-> non-streamed and SSE-streamed) are implemented and tested. AutoPilot,
-> live monitoring, and native compression are tracked as
-> [open issues](https://github.com/rajveer43/veloxquant-rs/issues) — see
+> **Status:** 0.3.0, prepared on `master` but not yet released (crates.io
+> still serves 0.2.x; see [Releasing](#releasing)). Hardware
+> detection, memory/KV-cache estimation, optimization recommendations,
+> the model registry, chat (non-streamed and SSE-streamed), model
+> listing, Agent tool calling, MCP tool sources, benchmarking, the `rig`
+> adapter, AutoPilot, and live periodic metrics sampling are implemented
+> and tested. Native Rust KV-cache compression is still an
+> [open issue](https://github.com/rajveer43/veloxquant-rs/issues). See
 > [Roadmap](#roadmap).
 
 ## Installation
 
 ```toml
 [dependencies]
-veloxquant = "0.2"
+veloxquant = "0.3"
 ```
 
-MSRV: Rust 1.75 (edition 2021).
+Until 0.3.0 is on crates.io, depend on the git repository instead
+(`veloxquant = { git = "https://github.com/rajveer43/veloxquant-rs" }`).
+0.2.1 is only partially published and should not be used (see the
+[CHANGELOG](CHANGELOG.md)).
+
+MSRV: Rust 1.90 (edition 2021). This floor comes from the dependency tree
+(`ordered-float` 5.5 via `rig-core`, `rmcp` 3.2, the ICU crates behind
+`url`), not from the SDK's own code; CI builds and tests it against the
+committed `Cargo.lock`.
 
 ## Quick Start
 
@@ -83,6 +94,30 @@ println!("Recommended Profile: {}", info.recommended_profile);
 
 Detection never panics on unsupported hardware: fields degrade to empty
 strings or `0` rather than erroring.
+
+On macOS, `available_memory_bytes` is free + inactive memory read from Mach
+`host_statistics64`, the same figure the Swift and Go SDKs report. It is
+not `sysinfo`'s, which subtracts compressed pages and can report close to
+zero on a Mac with gigabytes free. Other platforms use `sysinfo`.
+
+## Error handling
+
+Fallible calls return `veloxquant::VeloxQuantError`. It is
+`#[non_exhaustive]` from 0.3.0, so a `match` on it needs a wildcard arm.
+New variants can then be added in minor releases without breaking your
+build:
+
+```rust
+use veloxquant::VeloxQuantError;
+
+fn hint(err: &VeloxQuantError) -> &'static str {
+    match err {
+        VeloxQuantError::RuntimeUnavailable => "start the runtime first",
+        VeloxQuantError::InsufficientMemory => "try a smaller model",
+        _ => "see the error message",
+    }
+}
+```
 
 ## Memory Estimation
 
@@ -153,9 +188,40 @@ println!("{}: {}", recommendation.profile, recommendation.reason);
 
 ## AutoPilot
 
-Not yet implemented — see [Roadmap](#roadmap) (targeted for v0.3.0). Today,
-combine `client.system()`, `client.memory()`, and `client.optimize()`
-manually to get the same information AutoPilot will automate.
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+use veloxquant::{AutoPilotConfig, Client, Task};
+
+let client = Client::builder().build()?;
+let session = client
+    .autopilot(AutoPilotConfig { task: Some(Task::Chat), ..Default::default() })
+    .await?;
+
+for decision in &session.plan().decisions {
+    println!("{decision}");
+}
+let reply = session.chat("Hello!").await?;
+# Ok(())
+# }
+```
+
+This needs the `autopilot` feature (which implies `openai`), the
+`veloxquant` CLI from VeloxQuant-MLX on `PATH`, and an Apple Silicon Mac.
+AutoPilot follows Go's `Client.AutoPilot` for hardware inspection, model
+selection (the curated registry ranked by `ModelRegistry::recommend_scored`,
+or a pinned model), the default 8192-token context, and the 15% safety
+margin. **The compression strategy is never computed in Rust.** It comes
+from the real CLI: `recommend --json` picks the method, a won't-fit warning
+stops the run unless `force: true` is set, `methods --servable-only`
+confirms `serve` can run the method, and `auto-config --json` is the
+fallback when it can't. `session.plan()` records every decision.
+
+AutoPilot does not launch the runtime. Serve the planned model with
+`plan.method` and `plan.bits` yourself. Use `AutoPilot::new(client)` with
+`.with_cli(VeloxQuantCli::python_module("/path/to/python"))` to point at a
+specific install, or `.with_hardware(...)` to plan for a different Mac.
+Use `try_start` to receive "won't fit" as data instead of an error. See
+`examples/autopilot.rs`.
 
 ## Streaming
 
@@ -195,8 +261,8 @@ let client = veloxquant::Client::builder()
 
 `Client::chat` posts to `{base_url}/v1/chat/completions` in the standard
 OpenAI request/response shape, both non-streamed (`create`) and
-SSE-streamed (`stream`). `GET /v1/models` is planned — see
-[Roadmap](#roadmap).
+SSE-streamed (`stream`). `Client::list_models` calls `GET /v1/models` and
+merges the result with the curated registry.
 
 ## Agent (tool calling)
 
@@ -288,7 +354,7 @@ rationale. `vq benchmark <model>` uses this under the hood.
 ## `rig` integration
 
 `crates/veloxquant-rig` (published independently, with its own crate
-version — not tied to the workspace's `0.2.1`) adapts a `veloxquant::Client`
+version, currently 0.1.0, not tied to the workspace's 0.3.0) adapts a `veloxquant::Client`
 to [`rig-core`](https://crates.io/crates/rig-core)'s `CompletionModel`
 trait, so a local VeloxQuant runtime can be used as the completion backend
 in a `rig` pipeline/agent — mirroring the *shape* of Go's `langchain`
@@ -323,24 +389,36 @@ benchmark phase's hardware-dependent tests).
 
 ## Monitoring
 
-`Monitor`/`Metrics` (behind the `monitor` feature) provide working
-publish/subscribe plumbing today via `tokio::sync::broadcast`; automatic
-periodic sampling of live memory/inference metrics is planned for v0.3.0.
+`Monitor`/`Metrics` (behind the `monitor` feature) provide
+publish/subscribe over `tokio::sync::broadcast`, and
+`Monitor::spawn_sampler` drives them periodically. It polls a `Sampler`
+on an interval and publishes each sample on that same channel.
+`SystemSampler` samples host memory used/available. Inference-side fields
+(tokens/sec, TTFT, KV-cache bytes) are left at their defaults for you to
+publish yourself, or for a custom `Sampler` to fill in.
 
-```rust
-use veloxquant_monitor::{Monitor, Metrics};
+```rust,no_run
+use std::time::Duration;
+use veloxquant_monitor::{Metrics, Monitor, SystemSampler};
 
 # async fn run() {
 let monitor = Monitor::new();
 let mut receiver = monitor.subscribe();
+let sampling = monitor.spawn_sampler(SystemSampler::new(), Duration::from_secs(1));
 
-monitor.publish(Metrics { memory_used_bytes: 1024, ..Default::default() });
+// Out-of-band samples can still be published by hand between ticks.
+monitor.publish(Metrics { tokens_per_second: 42.0, ..Default::default() });
 
 if let Ok(metrics) = receiver.recv().await {
-    println!("Memory: {} bytes", metrics.memory_used_bytes);
+    println!("Memory used: {} bytes", metrics.memory_used_bytes);
 }
+sampling.stop().await; // dropping the handle also stops sampling
 # }
 ```
+
+Behaves like Go's monitor. The first sample is taken immediately, then one
+per interval. A zero interval means 5 s. A sampler error skips that tick
+only. See `examples/monitor.rs`.
 
 ## CLI
 
@@ -397,7 +475,7 @@ veloxquant                  facade crate: Client, ClientBuilder, re-exports
 ├── veloxquant-memory        model + KV-cache memory estimation, optimization recommendations
 ├── veloxquant-runtime       async client for a VeloxQuant runtime (health checks today)
 ├── veloxquant-openai        OpenAI-compatible wire types (chat request/response, models)
-├── veloxquant-monitor       metrics types + broadcast-based pub/sub
+├── veloxquant-monitor       metrics types, broadcast-based pub/sub, periodic sampling
 ├── veloxquant-models        local Hugging Face model cache management (list/pull/delete)
 └── veloxquant-cli (vq)      command-line interface
 
@@ -408,17 +486,18 @@ Feature flags on the `veloxquant` crate let you opt out of what you don't need:
 
 ```toml
 [dependencies]
-veloxquant = { version = "0.2", default-features = false, features = ["runtime"] }
+veloxquant = { version = "0.3", default-features = false, features = ["runtime"] }
 ```
 
 | Feature             | Default | Enables                                   |
 |---------------------|---------|--------------------------------------------|
 | `runtime`           | ✓       | `Client::runtime()` (health checks)        |
 | `openai`            | ✓       | `Client::chat()` (implies `runtime`)       |
-| `monitor`           |         | `Monitor`/`Metrics` re-exports             |
+| `monitor`           |         | `Monitor`/`Metrics`/`SystemSampler` re-exports (live sampling) |
 | `local-models`      |         | `list_local_models`/`pull_local_model`/`delete_local_model` (local Hugging Face cache management) |
 | `agent`             |         | `Agent`/`Tool` tool-calling loop (implies `openai`) |
 | `mcp`               |         | `Agent::use_mcp_server` and MCP tool sources (implies `agent`) |
+| `autopilot`         |         | `Client::autopilot`/`AutoPilot` (implies `openai`; needs the `veloxquant` CLI) |
 | `native-optimizers` |         | Reserved for native Rust compression (v0.5.0+); no implementation ships yet |
 
 ## Roadmap
@@ -426,12 +505,35 @@ veloxquant = { version = "0.2", default-features = false, features = ["runtime"]
 - **v0.1.0** — workspace, hardware detection, memory/KV-cache
   estimation, optimization profiles, runtime health check, non-streamed
   chat, curated model registry, `vq doctor`/`analyze`/`recommend`/`benchmark`/`serve`, tests.
-- **v0.2.0** (this release) — SSE streaming chat completions. `GET /v1/models`
-  is also scoped to v0.2.0 and still open — see
-  [issue #2](https://github.com/rajveer43/veloxquant-rs/issues/2).
-- **v0.3.0** — Live monitoring/sampling, benchmarking polish, AutoPilot, advanced model recommendation.
+- **v0.2.0** — SSE streaming chat completions.
+- **v0.2.1** — `GET /v1/models` model listing.
+- **v0.3.0** (prepared, not yet released) — SDK parity with Go/TS: local
+  model cache, Agent tool calling, MCP tool sources, `benchmark()`, the
+  `rig` adapter, AutoPilot (CLI-backed compression choice), live periodic
+  metrics sampling, correct macOS available memory, a `#[non_exhaustive]`
+  `VeloxQuantError`, and release automation. Releases are gated on the
+  full CI workflow and publish to crates.io in dependency order,
+  idempotently. A minor bump because it is semver-breaking. See
+  [CHANGELOG](CHANGELOG.md).
 - **v0.5.0** — Investigate native Rust KV-cache compression (TurboQuant, RVQ, VecInfer, RateQuant, PolarQuant, QJL).
-- **v1.0.0** — Stable API, SemVer guarantees, full CI/release automation.
+- **v1.0.0** — Stable API, SemVer guarantees.
+
+### Releasing
+
+Run the **Bump version** workflow (or `scripts/bump-version.sh <x.y.z>` and
+push a `v<x.y.z>` tag). The **Release** workflow runs the full CI workflow,
+checks that the tag matches the workspace version, builds the `vq`
+binaries, and creates the GitHub release. If the `PUBLISH_TO_CRATES_IO`
+repo variable is `true` and `CARGO_REGISTRY_TOKEN` is set, it also
+publishes to crates.io via `scripts/publish-crates.sh`, which derives the
+order from `cargo metadata` and skips versions already published. Run
+`scripts/publish-crates.sh --plan` to preview a release.
+
+The workspace manifests are already at 0.3.0. To release it, run **Bump
+version** with `0.3.0`: the script sees the manifests already match, only
+stamps the changelog, then tags `v0.3.0` and starts the release. The plan
+publishes all nine publishable crates, including `veloxquant-models` and
+`veloxquant-rig`, which have never been on crates.io.
 
 Tracked as a GitHub Epic and per-feature issues:
 <https://github.com/rajveer43/veloxquant-rs/issues>.

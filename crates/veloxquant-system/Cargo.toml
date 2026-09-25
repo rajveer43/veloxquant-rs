@@ -15,3 +15,8 @@ categories.workspace = true
 veloxquant-core = { workspace = true }
 serde = { workspace = true }
 sysinfo = { workspace = true }
+
+# macOS available memory is read via Mach `host_statistics64` instead of
+# sysinfo, whose macOS figure subtracts compressor pages (see memory.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = { workspace = true }

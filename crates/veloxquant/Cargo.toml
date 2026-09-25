@@ -53,6 +53,14 @@ required-features = ["openai"]
 name = "axum_server"
 
 [[example]]
+name = "autopilot"
+required-features = ["autopilot"]
+
+[[example]]
+name = "monitor"
+required-features = ["monitor"]
+
+[[example]]
 name = "agent"
 required-features = ["agent"]
 
@@ -76,3 +84,4 @@ native-optimizers = []
 local-models = ["dep:veloxquant-models"]
 agent = ["openai", "dep:async-trait"]
 mcp = ["agent", "dep:rmcp", "dep:tokio"]
+autopilot = ["openai", "dep:async-trait"]

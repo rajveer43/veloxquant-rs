@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-veloxquant = { path = "../veloxquant", version = "0.2.1", features = ["openai"] }
+veloxquant = { path = "../veloxquant", version = "0.3.0", features = ["openai"] }
 veloxquant-core = { workspace = true }
 veloxquant-openai = { workspace = true }
 rig-core = "0.42"
