@@ -10,13 +10,16 @@ homepage.workspace = true
 authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
+# Distributed as prebuilt binaries on GitHub releases, not on crates.io (see
+# README); scripts/publish-crates.sh skips it.
+publish = false
 
 [[bin]]
 name = "vq"
 path = "src/main.rs"
 
 [dependencies]
-veloxquant = { path = "../veloxquant", version = "0.2.1", features = ["local-models"] }
+veloxquant = { path = "../veloxquant", version = "0.3.0", features = ["local-models"] }
 tokio = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }

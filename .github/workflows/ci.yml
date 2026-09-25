@@ -5,6 +5,12 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  # Lets release.yml gate publishing on this exact workflow (the Go and
+  # Swift SDKs' `uses: ./.github/workflows/ci.yml` pattern).
+  workflow_call: {}
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,7 +18,7 @@ env:
 jobs:
   fmt:
     name: rustfmt
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,14 +28,14 @@ jobs:
 
   clippy:
     name: clippy
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
     name: test (${{ matrix.name }})
@@ -38,9 +44,15 @@ jobs:
       matrix:
         include:
           - name: macOS ARM64
-            os: macos-14
+            os: macos-15
+          # macos-13 runners are retired: every CI run since v0.1.0 left
+          # this leg queued until GitHub cancelled it after 24h.
+          # macos-15-intel is GitHub's last x86_64 macOS image (listed in
+          # actions/runner-images, actions/runner-images#13045) and is
+          # supported until August 2027, after which GitHub drops Intel
+          # macOS entirely; remove this leg then (see CHANGELOG 0.3.0).
           - name: macOS Intel
-            os: macos-13
+            os: macos-15-intel
           - name: Linux
             os: ubuntu-latest
     runs-on: ${{ matrix.os }}
@@ -52,12 +64,28 @@ jobs:
       - run: cargo build --workspace --examples
 
   msrv:
-    name: MSRV (1.75)
-    runs-on: macos-14
+    name: MSRV (1.90)
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      # Keep in sync with `rust-version` in the root Cargo.toml.
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.75"
+          toolchain: "1.90"
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --workspace
+      # --locked: the MSRV claim is about the committed Cargo.lock, so fail
+      # rather than silently re-resolve if it's out of date.
+      - run: cargo build --workspace --all-features --locked
+      - run: cargo test --workspace --all-features --locked
+
+  package:
+    name: package + publish plan
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Catches manifest problems (missing metadata, unpublishable path
+      # deps) and publish-order cycles before a release tag is pushed.
+      - run: cargo package --workspace --no-verify
+      - run: ./scripts/publish-crates.sh --plan

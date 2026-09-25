@@ -13,9 +13,10 @@ env:
 jobs:
   bump:
     name: Bump version, tag, and push
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,3 +47,10 @@ jobs:
           git tag "v${{ inputs.version }}"
           git push origin HEAD:master
           git push origin "v${{ inputs.version }}"
+
+      # The tag push above uses GITHUB_TOKEN, which does not trigger
+      # release.yml's `push: tags` trigger; dispatch it on the tag instead.
+      - name: Start the release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref "v${{ inputs.version }}"

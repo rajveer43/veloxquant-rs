@@ -24,6 +24,8 @@
 
 #[cfg(feature = "agent")]
 pub mod agent;
+#[cfg(feature = "autopilot")]
+pub mod autopilot;
 #[cfg(feature = "openai")]
 pub mod benchmark;
 #[cfg(feature = "openai")]
@@ -34,7 +36,10 @@ pub mod mcp;
 pub mod models;
 
 pub use client::{Client, ClientBuilder};
-pub use models::{ModelInfo, ModelRecommendationRequest, ModelRegistry, Task};
+pub use models::{
+    ModelInfo, ModelRecommendationRequest, ModelRegistry, ScoredModel, Task,
+    DEFAULT_RANKING_CONTEXT_LENGTH,
+};
 
 pub use veloxquant_core::{format_bytes, OptimizationProfile, Result, VeloxQuantError};
 pub use veloxquant_memory::{
@@ -55,7 +60,9 @@ pub use veloxquant_openai::{
 pub use veloxquant_runtime::RuntimeStatus;
 
 #[cfg(feature = "monitor")]
-pub use veloxquant_monitor::{Metrics, Monitor};
+pub use veloxquant_monitor::{
+    Metrics, Monitor, Sampler, SamplingHandle, SystemSampler, DEFAULT_SAMPLE_INTERVAL,
+};
 
 #[cfg(feature = "local-models")]
 pub use veloxquant_models::{
@@ -65,6 +72,12 @@ pub use veloxquant_models::{
 
 #[cfg(feature = "agent")]
 pub use agent::{Agent, AgentRunOptions, AgentRunResult, AgentStep, Tool};
+
+#[cfg(feature = "autopilot")]
+pub use autopilot::{
+    AutoPilot, AutoPilotConfig, AutoPilotFitError, AutoPilotOutcome, AutoPilotPlan,
+    AutoPilotSession, ModelSelection, RecommendGoal, VeloxQuantCli,
+};
 
 #[cfg(feature = "mcp")]
 pub use mcp::{

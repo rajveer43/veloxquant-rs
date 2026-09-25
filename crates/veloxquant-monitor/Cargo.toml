@@ -1,6 +1,6 @@
 [package]
 name = "veloxquant-monitor"
-description = "Memory and inference metrics types for the VeloxQuant Rust SDK"
+description = "Memory and inference metrics, pub/sub, and periodic sampling for the VeloxQuant Rust SDK"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,7 +13,9 @@ categories.workspace = true
 
 [dependencies]
 veloxquant-core = { workspace = true }
+veloxquant-system = { workspace = true }
 tokio = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }

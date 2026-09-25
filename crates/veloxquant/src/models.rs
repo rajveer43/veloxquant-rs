@@ -6,7 +6,8 @@
 //! `StaticRegistry -> LocalRegistryCache -> RemoteRegistry`. No network
 //! access is required for basic functionality.
 
-use veloxquant_memory::ModelArchitecture;
+use veloxquant_core::Result;
+use veloxquant_memory::{MemoryRequest, ModelArchitecture, Precision};
 #[cfg(feature = "openai")]
 use veloxquant_openai::RemoteModel;
 
@@ -100,6 +101,39 @@ pub struct ModelRecommendationRequest {
     pub available_memory_bytes: u64,
 }
 
+/// Context length [`ModelRegistry::recommend_scored`] ranks against when
+/// none is given — Go's `RecommendScored` default.
+pub const DEFAULT_RANKING_CONTEXT_LENGTH: usize = 8192;
+
+/// How much memory headroom contributes to a candidate's score, relative to
+/// [`RECOMMENDED_BONUS`] — Go's `headroomWeight`.
+const HEADROOM_WEIGHT: f64 = 1.0;
+
+/// Added to the score of registry entries marked `recommended`, so a
+/// curated pick outranks an equally-fitting alternative — Go's
+/// `recommendedBonus`.
+const RECOMMENDED_BONUS: f64 = 0.5;
+
+/// A candidate model with the score and reason
+/// [`ModelRegistry::recommend_scored`] ranked it by — Go's `models.Scored`.
+#[derive(Debug, Clone)]
+pub struct ScoredModel {
+    /// The candidate.
+    pub info: ModelInfo,
+    /// Ranking value, higher is better. Only meaningful relative to other
+    /// candidates from the same call.
+    pub score: f64,
+    /// Human-readable explanation of the score.
+    pub reason: String,
+}
+
+fn task_label(task: Option<Task>) -> String {
+    match task {
+        Some(task) => format!("{task:?}").to_lowercase(),
+        None => String::new(),
+    }
+}
+
 /// Facade over the curated model registry, mirroring `client.models()` in
 /// the public SDK surface.
 #[derive(Debug, Clone, Copy, Default)]
@@ -114,6 +148,92 @@ impl ModelRegistry {
     /// Lists every model in the curated registry.
     pub fn list(&self) -> Vec<ModelInfo> {
         registry()
+    }
+
+    /// Looks up a curated registry entry by its exact `name` — Go's
+    /// `Registry.Get`.
+    pub fn get(&self, name: &str) -> Option<ModelInfo> {
+        registry().into_iter().find(|m| m.name == name)
+    }
+
+    /// Ranks supported models for `req.task` (any task if `None`), best
+    /// first, with a human-readable reason for each — a port of Go's
+    /// `models.RecommendScored`.
+    ///
+    /// When `req.available_memory_bytes` is non-zero, each candidate's
+    /// total footprint is estimated at int4 weights + int4 KV cache for
+    /// `context_length` tokens (default
+    /// [`DEFAULT_RANKING_CONTEXT_LENGTH`]); models that don't fit are
+    /// dropped, and the rest score higher the more headroom they leave.
+    /// Registry entries marked `recommended` get a fixed bonus. Ties keep
+    /// registry order.
+    ///
+    /// Unlike [`ModelRegistry::recommend`] (unchanged, weights-only, and
+    /// unranked), this includes the KV cache and the runtime overhead in
+    /// the fit check, matching Go.
+    pub fn recommend_scored(
+        &self,
+        req: &ModelRecommendationRequest,
+        context_length: Option<usize>,
+    ) -> Result<Vec<ScoredModel>> {
+        let context_length = context_length
+            .filter(|&n| n > 0)
+            .unwrap_or(DEFAULT_RANKING_CONTEXT_LENGTH);
+        let task = task_label(req.task);
+
+        let mut candidates = Vec::new();
+        for model in registry() {
+            if !model.supported {
+                continue;
+            }
+            if let Some(t) = req.task {
+                if !model.tasks.contains(&t) {
+                    continue;
+                }
+            }
+
+            let mut score = if model.recommended {
+                RECOMMENDED_BONUS
+            } else {
+                0.0
+            };
+
+            if req.available_memory_bytes == 0 {
+                candidates.push(ScoredModel {
+                    reason: format!(
+                        "matches task {task:?}; no memory budget given to rank by headroom"
+                    ),
+                    info: model,
+                    score,
+                });
+                continue;
+            }
+
+            let estimate = veloxquant_memory::estimate(&MemoryRequest {
+                model: model.architecture.clone(),
+                context_length,
+                precision: Precision::Int4,
+                optimized_precision: Precision::Int4,
+            })?;
+            if estimate.total_memory_bytes > req.available_memory_bytes {
+                continue;
+            }
+            let headroom =
+                1.0 - estimate.total_memory_bytes as f64 / req.available_memory_bytes as f64;
+            score += headroom * HEADROOM_WEIGHT;
+            candidates.push(ScoredModel {
+                reason: format!(
+                    "fits task {task:?} with {:.0}% memory headroom at {context_length}-token context",
+                    headroom * 100.0
+                ),
+                info: model,
+                score,
+            });
+        }
+
+        // Stable sort: equal scores keep registry order, as in Go.
+        candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
+        Ok(candidates)
     }
 
     /// Merges live models reported by a runtime's `GET /v1/models` with the
@@ -203,6 +323,74 @@ mod tests {
             available_memory_bytes: 1024, // 1 KB — nothing should fit
         });
         assert!(tiny_budget.is_empty());
+    }
+
+    #[test]
+    fn get_finds_exact_name_only() {
+        let registry = ModelRegistry::new();
+        let first = registry.list().remove(0);
+        assert_eq!(registry.get(&first.name).unwrap().name, first.name);
+        assert!(registry.get("does-not-exist").is_none());
+    }
+
+    #[test]
+    fn recommend_scored_ranks_recommended_model_first_without_budget() {
+        let registry = ModelRegistry::new();
+        // Chat: Qwen3-8B (recommended) and Gemma-2-9B (not recommended).
+        let scored = registry
+            .recommend_scored(
+                &ModelRecommendationRequest {
+                    task: Some(Task::Chat),
+                    available_memory_bytes: 0,
+                },
+                None,
+            )
+            .unwrap();
+        assert!(scored.len() >= 2);
+        assert!(scored[0].info.recommended);
+        assert!(scored.windows(2).all(|w| w[0].score >= w[1].score));
+        assert!(scored[0].reason.contains("no memory budget"));
+        assert!(scored[0].reason.contains("\"chat\""));
+    }
+
+    #[test]
+    fn recommend_scored_drops_models_that_do_not_fit_and_explains_headroom() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        let registry = ModelRegistry::new();
+        // 8 GiB: Qwen3-8B at int4 (~4 GB weights + small KV + 0.5 GB
+        // overhead) fits; the 30B coder (~15 GB of int4 weights) does not.
+        let scored = registry
+            .recommend_scored(
+                &ModelRecommendationRequest {
+                    task: None,
+                    available_memory_bytes: 8 * GIB,
+                },
+                Some(8192),
+            )
+            .unwrap();
+        assert!(scored
+            .iter()
+            .all(|s| s.info.name != "mlx-community/Qwen3-Coder-30B-4bit"));
+        assert_eq!(scored[0].info.name, "mlx-community/Qwen3-8B-4bit");
+        assert!(scored[0]
+            .reason
+            .contains("memory headroom at 8192-token context"));
+        assert!(scored.windows(2).all(|w| w[0].score >= w[1].score));
+    }
+
+    #[test]
+    fn recommend_scored_returns_empty_when_nothing_fits() {
+        let registry = ModelRegistry::new();
+        let scored = registry
+            .recommend_scored(
+                &ModelRecommendationRequest {
+                    task: None,
+                    available_memory_bytes: 1024,
+                },
+                None,
+            )
+            .unwrap();
+        assert!(scored.is_empty());
     }
 
     #[cfg(feature = "openai")]

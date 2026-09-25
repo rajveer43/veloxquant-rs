@@ -27,12 +27,14 @@ if [[ -z "$current_version" ]]; then
     exit 1
 fi
 
+# The manifests can already be at the target version when a release was
+# prepared by hand (0.3.0 was: the workspace was bumped in the same change
+# that documented it). Then only the changelog is stamped.
 if [[ "$current_version" == "$new_version" ]]; then
-    echo "error: new version ($new_version) matches current version" >&2
-    exit 1
+    echo "workspace is already at $new_version; only stamping the changelog"
+else
+    echo "bumping workspace version: $current_version -> $new_version"
 fi
-
-echo "bumping workspace version: $current_version -> $new_version"
 
 # Bump the workspace package version (the single `version = "..."` line
 # under [workspace.package] in the root Cargo.toml), and every
